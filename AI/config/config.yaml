@@ -1,0 +1,107 @@
+# Configuration for AI Module
+
+# Camera Settings - Hikvision IDS-2CD7146G0-IZS (4MP DeepinView)
+camera:
+  # RTSP URL format for Hikvision: rtsp://username:password@ip:554/Streaming/Channels/101
+  # Channel 101 = Main stream (4MP), 102 = Sub stream (D1/CIF)
+  type: "hikvision"
+
+  # Default settings for all cameras
+  port: 554
+  username: "admin"
+  password: "test@2025"
+  channel: 1
+
+  # Stream selection:
+  # 1 = Main stream: 2560x1440 (4MP), H.265+, best quality for recording
+  # 2 = Sub stream: 704x576 (D1), faster processing, recommended for AI
+  stream: 1
+
+  # Native resolution của camera (4MP)
+  width: 2560
+  height: 1440
+  fps: 25
+
+  # Processing resolution (resize để AI xử lý nhanh hơn)
+  process_width: 1280
+  process_height: 720
+
+  # Connection optimization
+  reconnect_delay: 3
+  max_reconnect_attempts: 15
+  buffer_size: 1 # Giảm latency, chỉ giữ 1 frame
+  connection_timeout: 10 # Timeout kết nối (giây)
+  read_timeout: 5 # Timeout đọc frame (giây)
+
+  # RTSP Transport
+  # tcp = ổn định hơn, udp = latency thấp hơn
+  transport: "tcp"
+
+  # Hardware acceleration (GTX 1650 4GB)
+  use_hw_accel: true # ENABLED for NVIDIA GPU
+  hw_decoder: "cuda" # cuda, dxva2, d3d11va
+
+  # Fallback options
+  fallback_source: 0
+
+  # Camera list
+  cameras:
+    - id: "main_entrance"
+      name: "Lối vào chính"
+      ip: "192.168.1.6"
+      stream_path: "/Streaming/Channels/101"
+      enabled: true
+
+# Face Recognition Settings (GPU Optimized for GTX 1650)
+face_recognition:
+  enabled: true
+  use_gpu: true # Enable GPU acceleration
+  model: "cnn" # "cnn" for GPU (faster), "hog" for CPU
+  tolerance: 0.6 # Lower = more strict matching
+  num_jitters: 1 # Higher = more accurate but slower
+  encoding_model: "large" # "small" or "large"
+  min_face_size: 30 # Slightly larger for better accuracy
+  detection_interval: 3 # Process every 3 frames (faster with GPU)
+  process_scale: 0.75 # Higher resolution with GPU
+  batch_size: 4 # Process multiple faces at once
+
+# Fall Detection Settings (GPU Optimized for GTX 1650)
+fall_detection:
+  enabled: true
+  use_gpu: true # Enable CUDA
+  device: "cuda:0" # Use first GPU
+  model_path: "yolov8n-pose.pt" # Nano model for speed
+  # For better accuracy (if GPU can handle): yolov8s-pose.pt or yolov8m-pose.pt
+  conf_threshold: 0.5 # Confidence threshold
+  iou_threshold: 0.45 # NMS threshold
+  half_precision: true # FP16 for faster inference on GTX 1650
+
+  # Fall detection parameters
+  model_complexity: 1 # 0, 1, or 2 (higher = more accurate but slower)
+  min_detection_confidence: 0.7
+  min_tracking_confidence: 0.5
+  fall_threshold:
+    vertical_speed: 0.5 # Sudden vertical movement
+    angle_threshold: 45 # Degrees from vertical
+    duration_threshold: 0.5 # Seconds to confirm fall
+  cooldown_seconds: 5 # Time before next fall detection
+
+# API Settings
+api:
+  backend_url: "http://localhost:5000"
+  websocket_url: "ws://localhost:5000/ws"
+  timeout: 5
+
+# Database Settings (for local testing)
+database:
+  type: "postgresql" # "postgresql" or "sqlserver"
+  host: "localhost"
+  port: 5432
+  name: "hospital_db"
+  user: "admin"
+  password: "admin123"
+
+# Logging
+logging:
+  level: "INFO"
+  file: "logs/ai_module.log"

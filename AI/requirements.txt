@@ -1,0 +1,40 @@
+# Hospital Vision AI Module
+# Compatible with Python 3.10+ (including 3.13)
+# Optimized for NVIDIA GTX 1650 (4GB VRAM)
+
+# ===========================================
+# GPU SUPPORT - IMPORTANT!
+# ===========================================
+# PyTorch with CUDA 12.4 (for GTX 1650)
+# Install separately with:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+# Or for CUDA 11.8:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+
+# Object Detection - YOLOv8 with GPU support
+ultralytics>=8.3.0
+opencv-python>=4.10.0
+
+# Fall Detection - YOLOv8-pose (GPU accelerated)
+# Model sẽ tự động dùng CUDA nếu PyTorch có CUDA
+
+# Utilities
+numpy>=2.0.0
+Pillow>=10.4.0
+
+# API Communication
+requests>=2.32.0
+websocket-client>=1.8.0
+
+# Face Recognition - sử dụng OpenCV built-in (không cần compile)
+# OpenCV đã được cài ở trên, Haar Cascade + histogram matching
+# Nếu muốn Face Recognition GPU nâng cao: pip install onnxruntime-gpu
+
+# Configuration
+python-dotenv==1.0.0
+pyyaml==6.0.1
+
+# Flask server
+flask>=3.0.0
+flask-cors>=4.0.0
+flask-socketio>=5.3.0
