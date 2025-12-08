@@ -25,7 +25,7 @@ class FastFaceRecognition:
         self.faces_folder = self.config.get('faces_folder', 'data/faces')
         self.detection_interval = self.config.get('detection_interval', 5)
         self.process_scale = self.config.get('process_scale', 0.5)
-        self.threshold = self.config.get('threshold', 0.6)
+        self.threshold = self.config.get('threshold', 0.92)  # High threshold to avoid false positives
         
         self.registered_faces: Dict[str, List[np.ndarray]] = {}  # person_id -> list of face histograms
         self.face_detector = None
@@ -36,14 +36,51 @@ class FastFaceRecognition:
         self._load_database()
     
     def _initialize_models(self):
-        """Initialize face detection using OpenCV Haar Cascade"""
-        # Use OpenCV's built-in Haar Cascade - no compilation needed
+        """Initialize face detection using OpenCV DNN (more robust than Haar)"""
+        # Try DNN face detector first (more accurate)
+        self.use_dnn = False
+        prototxt = cv2.data.haarcascades + '../deploy.prototxt'
+        caffemodel = cv2.data.haarcascades + '../res10_300x300_ssd_iter_140000.caffemodel'
+        
+        # Try OpenCV's DNN face detector if available
+        try:
+            # Check if we have the DNN model files
+            import urllib.request
+            model_dir = Path(__file__).parent / 'models'
+            model_dir.mkdir(exist_ok=True)
+            
+            prototxt_path = model_dir / 'deploy.prototxt'
+            caffemodel_path = model_dir / 'res10_300x300_ssd_iter_140000.caffemodel'
+            
+            # Download if not exists
+            if not prototxt_path.exists():
+                logger.info("Downloading DNN face detector prototxt...")
+                urllib.request.urlretrieve(
+                    'https://raw.githubusercontent.com/opencv/opencv/master/samples/dnn/face_detector/deploy.prototxt',
+                    str(prototxt_path)
+                )
+            
+            if not caffemodel_path.exists():
+                logger.info("Downloading DNN face detector model...")
+                urllib.request.urlretrieve(
+                    'https://github.com/opencv/opencv_3rdparty/raw/dnn_samples_face_detector_20170830/res10_300x300_ssd_iter_140000.caffemodel',
+                    str(caffemodel_path)
+                )
+            
+            self.dnn_net = cv2.dnn.readNetFromCaffe(str(prototxt_path), str(caffemodel_path))
+            self.use_dnn = True
+            logger.info("✅ OpenCV DNN Face Detection initialized (SSD)")
+        except Exception as e:
+            logger.warning(f"Could not load DNN face detector: {e}")
+            self.use_dnn = False
+        
+        # Fallback to Haar Cascade
         cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
         self.face_detector = cv2.CascadeClassifier(cascade_path)
         
         if self.face_detector.empty():
             logger.error("❌ Failed to load Haar Cascade classifier")
-        else:
+        elif not self.use_dnn:
             logger.info("✅ OpenCV Face Detection initialized (Haar Cascade)")
     
     def _load_database(self):
@@ -102,6 +139,41 @@ class FastFaceRecognition:
         except Exception as e:
             logger.error(f"Could not save database: {e}")
     
+    def _detect_faces_dnn(self, image: np.ndarray) -> List[Tuple[int, int, int, int]]:
+        """Detect faces using DNN (more robust)"""
+        h, w = image.shape[:2]
+        blob = cv2.dnn.blobFromImage(image, 1.0, (300, 300), (104.0, 177.0, 123.0))
+        self.dnn_net.setInput(blob)
+        detections = self.dnn_net.forward()
+        
+        faces = []
+        for i in range(detections.shape[2]):
+            confidence = detections[0, 0, i, 2]
+            if confidence > 0.5:  # Confidence threshold
+                box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+                x1, y1, x2, y2 = box.astype(int)
+                # Ensure valid coordinates
+                x1, y1 = max(0, x1), max(0, y1)
+                x2, y2 = min(w, x2), min(h, y2)
+                if x2 > x1 and y2 > y1:
+                    faces.append((x1, y1, x2 - x1, y2 - y1))  # (x, y, w, h) format
+        return faces
+    
+    def _detect_faces(self, image: np.ndarray) -> List[Tuple[int, int, int, int]]:
+        """Detect faces using best available method"""
+        if self.use_dnn:
+            faces = self._detect_faces_dnn(image)
+            if faces:
+                return faces
+        
+        # Fallback to Haar Cascade
+        if len(image.shape) == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = image
+        faces = self.face_detector.detectMultiScale(gray, 1.1, 4, minSize=(30, 30))
+        return list(faces)
+    
     def _extract_face_feature(self, image: np.ndarray) -> Optional[np.ndarray]:
         """
         Extract face feature from image using histogram + LBP-like features.
@@ -114,16 +186,20 @@ class FastFaceRecognition:
             else:
                 gray = image
             
-            # Detect face in image
-            faces = self.face_detector.detectMultiScale(gray, 1.1, 4, minSize=(30, 30))
+            # Detect face in image using best available method
+            faces = self._detect_faces(image)
             
             if len(faces) == 0:
-                # If no face detected, use the whole image
-                face_roi = gray
+                # If no face detected, try to use center crop as face region
+                h, w = gray.shape[:2]
+                # Assume face is in center 60% of image
+                x1, y1 = int(w * 0.2), int(h * 0.1)
+                x2, y2 = int(w * 0.8), int(h * 0.9)
+                face_roi = gray[y1:y2, x1:x2]
             else:
                 # Use the largest face
-                x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
-                face_roi = gray[y:y+h, x:x+w]
+                x, y, fw, fh = max(faces, key=lambda f: f[2] * f[3])
+                face_roi = gray[y:y+fh, x:x+fw]
             
             # Resize to standard size for comparison
             face_resized = cv2.resize(face_roi, (128, 128))
@@ -175,7 +251,8 @@ class FastFaceRecognition:
                 'annotated_frame': annotated,
                 'faces': self._format_faces(self.last_results),
                 'recognized_count': len(recognized),
-                'total_count': len(self.last_results)
+                'total_count': len(self.last_results),
+                'total_faces': len(self.last_results)  # Alias for compatibility
             }
         
         results = []
@@ -185,16 +262,8 @@ class FastFaceRecognition:
         scale = self.process_scale
         small_frame = cv2.resize(frame, (int(w * scale), int(h * scale)))
         
-        # Convert to grayscale
-        gray = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
-        
-        # Detect faces
-        faces = self.face_detector.detectMultiScale(
-            gray, 
-            scaleFactor=1.1, 
-            minNeighbors=5,
-            minSize=(30, 30)
-        )
+        # Detect faces using best available method
+        faces = self._detect_faces(small_frame)
         
         for (x, y, fw, fh) in faces:
             # Scale back to original size
@@ -235,7 +304,8 @@ class FastFaceRecognition:
             'annotated_frame': annotated_frame,
             'faces': self._format_faces(results),
             'recognized_count': len(recognized),
-            'total_count': len(results)
+            'total_count': len(results),
+            'total_faces': len(results)  # Alias for compatibility
         }
     
     def _format_faces(self, results: List[Dict]) -> List[Dict]:
@@ -252,6 +322,7 @@ class FastFaceRecognition:
         """Find matching identity from registered faces using histogram comparison"""
         best_match = "Unknown"
         best_score = 0.0
+        second_best_score = 0.0
         
         for person_id, features_list in self.registered_faces.items():
             # Compare with all registered features for this person
@@ -268,11 +339,26 @@ class FastFaceRecognition:
                     scores.append(score)
             
             if scores:
-                avg_score = np.mean(scores)
-                if avg_score > best_score and avg_score > self.threshold:
-                    best_score = avg_score
+                # Use max score instead of average for better matching
+                max_score = max(scores)
+                if max_score > best_score:
+                    second_best_score = best_score
+                    best_score = max_score
                     best_match = person_id
+                elif max_score > second_best_score:
+                    second_best_score = max_score
         
+        # Only accept if:
+        # 1. Score exceeds threshold
+        # 2. Score is significantly better than second best (margin > 0.05)
+        score_margin = best_score - second_best_score
+        if best_score < self.threshold:
+            return "Unknown", float(best_score)
+        
+        # For single person database, require very high confidence
+        if len(self.registered_faces) == 1 and best_score < 0.95:
+            return "Unknown", float(best_score)
+            
         return best_match, float(best_score)
     
     def list_registered(self) -> List[Dict]:

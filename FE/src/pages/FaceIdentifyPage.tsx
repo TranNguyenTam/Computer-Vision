@@ -1,9 +1,16 @@
 import {
+    Activity,
     AlertCircle,
+    Calendar,
     Camera,
     CheckCircle2,
+    Clock,
+    CreditCard,
+    FileText,
+    Heart,
     Loader2,
-    RefreshCw,
+    MapPin,
+    Phone,
     Scan,
     User,
     UserCheck
@@ -16,161 +23,99 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 interface PatientInfo {
   benhNhanId: number;
   maYTe: string;
-  fid?: string;
-  soVaoVien?: string;
-  pid?: string;
   tenBenhNhan: string;
-  ho?: string;
-  ten?: string;
   gioiTinh?: string;
   tuoi?: number;
   ngaySinh?: string;
-  ngayGioSinh?: string;
-  namSinh?: number;
-  maNoiSinh?: string;
   soDienThoai?: string;
-  dienThoaiBan?: string;
-  email?: string;
-  soNha?: string;
   diaChi?: string;
-  diaChiThuongTru?: string;
-  diaChiLienLac?: string;
-  diaChiCoQuan?: string;
-  tinhThanhId?: number;
-  quanHuyenId?: number;
-  xaPhuongId?: string;
-  cmnd?: string;
-  hoChieu?: string;
   nhomMau?: string;
   yeuToRh?: string;
-  tienSuDiUng?: string;
   tienSuBenh?: string;
-  tienSuHutThuocLa?: string;
-  soLuuTruNoiTru?: string;
-  soLuuTruNgoaiTru?: string;
-  ngheNghiepId?: number;
-  quocTichId?: number;
-  danTocId?: number;
-  trinhDoVanHoaId?: number;
-  tinhTrangHonNhanId?: number;
-  vietKieu?: boolean;
-  nguoiNuocNgoai?: boolean;
-  nguoiLienHe?: string;
-  thongTinNguoiLienHe?: string;
-  moiQuanHeId?: number;
-  tuVong?: boolean;
-  ngayTuVong?: string;
-  thoiGianTuVong?: string;
-  nguyenNhanTuVongId?: number;
   hinhAnhDaiDien?: string;
-  ghiChu?: string;
-  active?: boolean;
-  benhVienId?: number;
-  siteId?: number;
-  ngayTao?: string;
-  ngayCapNhat?: string;
-  nguoiTaoId?: number;
-  nguoiCapNhatId?: number;
+  bhyt?: string; // Giả lập trường BHYT nếu chưa có
 }
 
-// Helper function để hiển thị giá trị hoặc "Chưa cập nhật"
-const displayValue = (value: string | number | boolean | null | undefined, suffix?: string): string => {
-  if (value === null || value === undefined || value === '') {
-    return 'Chưa cập nhật';
-  }
-  if (typeof value === 'boolean') {
-    return value ? 'Có' : 'Không';
-  }
-  return suffix ? `${value}${suffix}` : String(value);
-};
-
-const formatDate = (dateStr: string | null | undefined): string => {
-  if (!dateStr) return 'Chưa cập nhật';
-  try {
-    return new Date(dateStr).toLocaleDateString('vi-VN');
-  } catch {
-    return 'Chưa cập nhật';
-  }
-};
-
-interface RecognizedFace {
-  recognized: boolean;
+interface DetectionRecord {
+  id: number;
+  maYTe: string;
+  patientName: string;
   confidence: number;
-  person_id?: string;  // MAYTE
-  person_name?: string;
-  bbox?: number[];
-}
-
-interface IdentifyResult {
-  success: boolean;
-  total_faces: number;
-  recognized_count: number;
-  faces: RecognizedFace[];
-  snapshot: string;  // base64
+  detectedAt: string;
+  cameraId: string;
+  location: string;
 }
 
 const FaceIdentifyPage: React.FC = () => {
   const [serverOnline, setServerOnline] = useState(false);
-  const [identifying, setIdentifying] = useState(false);
-  
-  // Kết quả nhận diện
-  const [identifyResult, setIdentifyResult] = useState<IdentifyResult | null>(null);
+  const [latestDetection, setLatestDetection] = useState<DetectionRecord | null>(null);
   const [patientInfo, setPatientInfo] = useState<PatientInfo | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [recentDetections, setRecentDetections] = useState<DetectionRecord[]>([]);
+  const [isLoadingInfo, setIsLoadingInfo] = useState(false);
 
-  // Kiểm tra server
-  const checkServer = useCallback(async () => {
-    try {
-      const response = await fetch(`${CAMERA_SERVER_URL}/api/camera/status`);
-      setServerOnline(response.ok);
-    } catch {
-      setServerOnline(false);
-    }
+  // 1. Configure AI on mount (Kiosk Mode: Face ON, Fall OFF)
+  useEffect(() => {
+    const configureAI = async () => {
+      try {
+        // Check status first
+        const statusRes = await fetch(`${CAMERA_SERVER_URL}/api/camera/status`);
+        if (statusRes.ok) {
+          setServerOnline(true);
+          // Configure settings
+          await fetch(`${CAMERA_SERVER_URL}/api/settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              face_recognition_enabled: true,
+              fall_detection_enabled: false, // Hide fall boxes
+              auto_detection_enabled: true   // Enable auto-record
+            })
+          });
+        } else {
+          setServerOnline(false);
+        }
+      } catch (e) {
+        console.error("Failed to configure AI", e);
+        setServerOnline(false);
+      }
+    };
+
+    configureAI();
+    // Re-check every 10s
+    const interval = setInterval(configureAI, 10000);
+    return () => clearInterval(interval);
   }, []);
 
+  // 2. Poll for detections
   useEffect(() => {
-    checkServer();
-    const interval = setInterval(checkServer, 5000);
-    return () => clearInterval(interval);
-  }, [checkServer]);
-
-  // Nhận diện khuôn mặt từ camera
-  const handleIdentify = async () => {
-    setIdentifying(true);
-    setError(null);
-    setIdentifyResult(null);
-    setPatientInfo(null);
-
-    try {
-      // Gọi API nhận diện từ camera
-      const response = await fetch(`${CAMERA_SERVER_URL}/api/faces/identify-from-camera`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      if (!response.ok) {
-        throw new Error('Không thể kết nối AI Server');
-      }
-
-      const result: IdentifyResult = await response.json();
-      setIdentifyResult(result);
-
-      // Nếu nhận diện được, lấy thông tin bệnh nhân từ Backend
-      if (result.success && result.recognized_count > 0) {
-        const recognizedFace = result.faces.find(f => f.recognized);
-        if (recognizedFace?.person_id) {
-          await fetchPatientInfo(recognizedFace.person_id);
+    const fetchDetections = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/face/detections/today`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.data.length > 0) {
+            const sorted = data.data; // Backend sorts desc
+            setRecentDetections(sorted);
+            
+            const newest = sorted[0];
+            // If new detection (different ID from current displayed), update
+            if (!latestDetection || newest.id !== latestDetection.id) {
+              setLatestDetection(newest);
+              fetchPatientInfo(newest.maYTe);
+            }
+          }
         }
+      } catch (e) {
+        console.error("Polling error", e);
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Lỗi không xác định');
-    } finally {
-      setIdentifying(false);
-    }
-  };
+    };
 
-  // Lấy thông tin bệnh nhân từ Backend bằng MAYTE
+    const interval = setInterval(fetchDetections, 2000); // Poll every 2s
+    return () => clearInterval(interval);
+  }, [latestDetection]);
+
   const fetchPatientInfo = async (maYTe: string) => {
+    setIsLoadingInfo(true);
     try {
       const response = await fetch(`${API_BASE_URL}/face/validate/${maYTe}`);
       if (response.ok) {
@@ -181,609 +126,194 @@ const FaceIdentifyPage: React.FC = () => {
       }
     } catch (err) {
       console.error('Error fetching patient info:', err);
+    } finally {
+      setIsLoadingInfo(false);
     }
   };
 
-  // Reset
-  const handleReset = () => {
-    setIdentifyResult(null);
-    setPatientInfo(null);
-    setError(null);
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-6">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3">
-            <Scan className="w-8 h-8 text-blue-600" />
-            Nhận diện khuôn mặt
-          </h1>
-          <p className="text-slate-500 mt-2">
-            Chụp ảnh từ camera và nhận diện bệnh nhân
-          </p>
-        </div>
-
-        {/* Server Status */}
-        <div className="mb-6 flex items-center gap-4">
-          <span className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium ${
-            serverOnline 
-              ? 'bg-emerald-100 text-emerald-700' 
-              : 'bg-red-100 text-red-700'
-          }`}>
-            <span className={`w-2 h-2 rounded-full ${
-              serverOnline ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'
-            }`}></span>
-            {serverOnline ? 'Camera Server đang hoạt động' : 'Camera Server không kết nối'}
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Camera View & Identify Button */}
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-            <div className="p-4 border-b bg-slate-50">
-              <h2 className="font-semibold text-slate-700 flex items-center gap-2">
-                <Camera className="w-5 h-5" />
-                Camera trực tiếp
-              </h2>
+    <div className="min-h-screen bg-slate-900 p-4 overflow-hidden">
+      <div className="grid grid-cols-12 gap-6 h-[calc(100vh-2rem)]">
+        
+        {/* LEFT: Camera Stream (8 cols) */}
+        <div className="col-span-8 bg-black rounded-2xl overflow-hidden relative shadow-2xl border border-slate-800">
+          {serverOnline ? (
+            <img 
+              src={`${CAMERA_SERVER_URL}/api/stream`} 
+              className="w-full h-full object-contain" 
+              alt="Camera Stream"
+            />
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center text-slate-500">
+              <Camera className="w-20 h-20 mb-4 opacity-50" />
+              <p className="text-xl">Đang kết nối Camera AI...</p>
+            </div>
+          )}
+          
+          {/* Status Overlay */}
+          <div className="absolute top-6 left-6 flex gap-3">
+            <div className={`px-4 py-2 rounded-full backdrop-blur-md border flex items-center gap-2 ${
+              serverOnline 
+                ? 'bg-green-500/20 border-green-500/30 text-green-400' 
+                : 'bg-red-500/20 border-red-500/30 text-red-400'
+            }`}>
+              <div className={`w-2.5 h-2.5 rounded-full ${serverOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+              <span className="font-medium text-sm">
+                {serverOnline ? "Hệ thống sẵn sàng" : "Mất kết nối"}
+              </span>
             </div>
             
-            <div className="relative">
-              {/* Camera Stream */}
-              {serverOnline ? (
-                <img
-                  src={`${CAMERA_SERVER_URL}/api/stream`}
-                  alt="Camera Stream"
-                  className="w-full aspect-video object-cover bg-slate-900"
-                />
-              ) : (
-                <div className="w-full aspect-video bg-slate-900 flex items-center justify-center">
-                  <div className="text-center text-slate-400">
-                    <Camera className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                    <p>Camera không khả dụng</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Overlay khi đang nhận diện */}
-              {identifying && (
-                <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                  <div className="text-center text-white">
-                    <Loader2 className="w-12 h-12 mx-auto mb-4 animate-spin" />
-                    <p className="text-lg font-medium">Đang nhận diện...</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Identify Button */}
-            <div className="p-6">
-              <button
-                onClick={handleIdentify}
-                disabled={!serverOnline || identifying}
-                className={`w-full py-4 rounded-xl font-semibold text-lg flex items-center justify-center gap-3 transition-all ${
-                  serverOnline && !identifying
-                    ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-200'
-                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                }`}
-              >
-                {identifying ? (
-                  <>
-                    <Loader2 className="w-6 h-6 animate-spin" />
-                    Đang xử lý...
-                  </>
-                ) : (
-                  <>
-                    <Scan className="w-6 h-6" />
-                    Nhận diện ngay
-                  </>
-                )}
-              </button>
-
-              {identifyResult && (
-                <button
-                  onClick={handleReset}
-                  className="w-full mt-3 py-3 rounded-xl font-medium text-slate-600 border border-slate-200 hover:bg-slate-50 flex items-center justify-center gap-2"
-                >
-                  <RefreshCw className="w-5 h-5" />
-                  Nhận diện lại
-                </button>
-              )}
+            <div className="px-4 py-2 rounded-full backdrop-blur-md border bg-blue-500/20 border-blue-500/30 text-blue-300 flex items-center gap-2">
+              <Scan className="w-4 h-4" />
+              <span className="font-medium text-sm">Auto-ID Active</span>
             </div>
           </div>
 
-          {/* Result Panel */}
-          <div className="space-y-6">
-            {/* Error */}
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-2xl p-6">
-                <div className="flex items-start gap-4">
-                  <AlertCircle className="w-6 h-6 text-red-500 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <h3 className="font-semibold text-red-800">Lỗi nhận diện</h3>
-                    <p className="text-red-600 mt-1">{error}</p>
-                  </div>
+          {/* Distance Guide Overlay */}
+          <div className="absolute bottom-8 left-0 right-0 flex justify-center">
+             <div className="bg-black/60 backdrop-blur-sm text-white/80 px-6 py-3 rounded-full text-sm border border-white/10">
+                ℹ️ Vui lòng đứng cách camera khoảng <b>1 mét</b> để nhận diện
+             </div>
+          </div>
+        </div>
+
+        {/* RIGHT: Info Panel (4 cols) */}
+        <div className="col-span-4 flex flex-col gap-6 h-full">
+          
+          {/* 1. Main Patient Card */}
+          <div className="flex-1 bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200">
+            <div className="bg-blue-600 p-4 text-white flex justify-between items-center">
+              <h2 className="font-bold text-lg flex items-center gap-2">
+                <UserCheck className="w-5 h-5" />
+                Thông tin bệnh nhân
+              </h2>
+              {latestDetection && (
+                <span className="text-blue-100 text-sm bg-blue-700 px-2 py-1 rounded">
+                  {formatDate(latestDetection.detectedAt)}
+                </span>
+              )}
+            </div>
+
+            <div className="flex-1 p-6 relative">
+              {isLoadingInfo ? (
+                <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
+                  <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
                 </div>
-              </div>
-            )}
+              ) : null}
 
-            {/* Kết quả nhận diện */}
-            {identifyResult && (
-              <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-                <div className="p-4 border-b bg-slate-50">
-                  <h2 className="font-semibold text-slate-700">Kết quả nhận diện</h2>
-                </div>
-
-                {/* Snapshot */}
-                {identifyResult.snapshot && (
-                  <div className="p-4 border-b">
-                    <img
-                      src={`data:image/jpeg;base64,${identifyResult.snapshot}`}
-                      alt="Snapshot"
-                      className="w-full rounded-xl"
-                    />
-                  </div>
-                )}
-
-                <div className="p-6">
-                  {/* Stats */}
-                  <div className="grid grid-cols-2 gap-4 mb-6">
-                    <div className="bg-slate-50 rounded-xl p-4 text-center">
-                      <div className="text-3xl font-bold text-slate-800">
-                        {identifyResult.total_faces}
-                      </div>
-                      <div className="text-sm text-slate-500">Khuôn mặt phát hiện</div>
+              {patientInfo ? (
+                <div className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  {/* Avatar & Name */}
+                  <div className="flex flex-col items-center mb-8">
+                    <div className="w-32 h-32 rounded-full border-4 border-blue-100 shadow-lg overflow-hidden mb-4">
+                      {patientInfo.hinhAnhDaiDien ? (
+                        <img src={patientInfo.hinhAnhDaiDien} alt="Avatar" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-slate-100 flex items-center justify-center">
+                          <User className="w-16 h-16 text-slate-300" />
+                        </div>
+                      )}
                     </div>
-                    <div className={`rounded-xl p-4 text-center ${
-                      identifyResult.recognized_count > 0 
-                        ? 'bg-emerald-50' 
-                        : 'bg-amber-50'
-                    }`}>
-                      <div className={`text-3xl font-bold ${
-                        identifyResult.recognized_count > 0 
-                          ? 'text-emerald-600' 
-                          : 'text-amber-600'
-                      }`}>
-                        {identifyResult.recognized_count}
-                      </div>
-                      <div className={`text-sm ${
-                        identifyResult.recognized_count > 0 
-                          ? 'text-emerald-600' 
-                          : 'text-amber-600'
-                      }`}>Đã nhận diện</div>
-                    </div>
+                    <h3 className="text-2xl font-bold text-slate-800 text-center">{patientInfo.tenBenhNhan}</h3>
+                    <p className="text-blue-600 font-medium bg-blue-50 px-3 py-1 rounded-full mt-2">
+                      {patientInfo.maYTe}
+                    </p>
                   </div>
 
-                  {/* No face detected */}
-                  {identifyResult.total_faces === 0 && (
-                    <div className="text-center py-8 text-slate-400">
-                      <User className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                      <p className="text-lg">Không phát hiện khuôn mặt nào</p>
-                      <p className="text-sm mt-1">Hãy đảm bảo khuôn mặt nằm trong khung hình</p>
-                    </div>
-                  )}
-
-                  {/* Face detected but not recognized */}
-                  {identifyResult.total_faces > 0 && identifyResult.recognized_count === 0 && (
-                    <div className="text-center py-8 text-amber-500">
-                      <AlertCircle className="w-16 h-16 mx-auto mb-4" />
-                      <p className="text-lg font-medium">Không nhận diện được</p>
-                      <p className="text-sm mt-1 text-slate-500">
-                        Khuôn mặt chưa được đăng ký trong hệ thống
+                  {/* Details Grid */}
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="bg-slate-50 p-3 rounded-lg">
+                      <p className="text-slate-500 text-xs mb-1">Năm sinh / Tuổi</p>
+                      <p className="font-semibold text-slate-700">
+                        {patientInfo.ngaySinh ? new Date(patientInfo.ngaySinh).getFullYear() : '---'} 
+                        {patientInfo.tuoi ? ` (${patientInfo.tuoi} tuổi)` : ''}
                       </p>
                     </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Thông tin bệnh nhân */}
-            {patientInfo && (
-              <div className="bg-white rounded-2xl shadow-lg overflow-hidden border-2 border-emerald-200">
-                <div className="p-4 border-b bg-emerald-50">
-                  <h2 className="font-semibold text-emerald-700 flex items-center gap-2">
-                    <UserCheck className="w-5 h-5" />
-                    Thông tin bệnh nhân
-                  </h2>
-                </div>
-
-                <div className="p-6 max-h-[70vh] overflow-y-auto">
-                  {/* Header với tên và ảnh */}
-                  <div className="flex items-start gap-6 mb-6">
-                    <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center flex-shrink-0">
-                      <User className="w-12 h-12 text-blue-500" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="text-sm text-slate-500">Họ và tên</div>
-                      <div className="text-xl font-bold text-slate-800 mb-2">
-                        {patientInfo.tenBenhNhan || 'Chưa cập nhật'}
-                      </div>
-                      <div className="flex gap-4">
-                        <div>
-                          <div className="text-xs text-slate-400">Mã y tế</div>
-                          <div className="font-semibold text-blue-600">{patientInfo.maYTe}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-slate-400">Giới tính</div>
-                          <div className="font-medium text-slate-700">{displayValue(patientInfo.gioiTinh)}</div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* THÔNG TIN ĐỊNH DANH */}
-                  <div className="mb-6">
-                    <h3 className="text-sm font-semibold text-slate-600 mb-3 flex items-center gap-2">
-                      🆔 Thông tin định danh
-                    </h3>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-lg">
-                      <div>
-                        <div className="text-xs text-slate-400">Mã bệnh nhân (ID)</div>
-                        <div className="font-medium text-slate-700">{patientInfo.benhNhanId}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">FID</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.fid)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">PID</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.pid)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Số vào viện</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.soVaoVien)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Số lưu trữ nội trú</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.soLuuTruNoiTru)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Số lưu trữ ngoại trú</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.soLuuTruNgoaiTru)}</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* THÔNG TIN CÁ NHÂN */}
-                  <div className="mb-6">
-                    <h3 className="text-sm font-semibold text-slate-600 mb-3 flex items-center gap-2">
-                      👤 Thông tin cá nhân
-                    </h3>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-lg">
-                      <div>
-                        <div className="text-xs text-slate-400">Họ</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.ho)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Tên</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.ten)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Ngày sinh</div>
-                        <div className="font-medium text-slate-700">
-                          {patientInfo.ngaySinh ? formatDate(patientInfo.ngaySinh) : displayValue(patientInfo.namSinh)}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Tuổi</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.tuoi, ' tuổi')}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Năm sinh</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.namSinh)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Mã nơi sinh</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.maNoiSinh)}</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* GIẤY TỜ TÙY THÂN */}
-                  <div className="mb-6">
-                    <h3 className="text-sm font-semibold text-slate-600 mb-3 flex items-center gap-2">
-                      📄 Giấy tờ tùy thân
-                    </h3>
-                    <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-lg">
-                      <div>
-                        <div className="text-xs text-slate-400">CMND/CCCD</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.cmnd)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Hộ chiếu</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.hoChieu)}</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* LIÊN HỆ */}
-                  <div className="mb-6">
-                    <h3 className="text-sm font-semibold text-slate-600 mb-3 flex items-center gap-2">
-                      📞 Thông tin liên hệ
-                    </h3>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-lg">
-                      <div>
-                        <div className="text-xs text-slate-400">Số điện thoại</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.soDienThoai)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Điện thoại bàn</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.dienThoaiBan)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Email</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.email)}</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* ĐỊA CHỈ */}
-                  <div className="mb-6">
-                    <h3 className="text-sm font-semibold text-slate-600 mb-3 flex items-center gap-2">
-                      🏠 Địa chỉ
-                    </h3>
-                    <div className="space-y-3 bg-slate-50 p-3 rounded-lg">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <div className="text-xs text-slate-400">Số nhà</div>
-                          <div className="font-medium text-slate-700">{displayValue(patientInfo.soNha)}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-slate-400">Địa chỉ</div>
-                          <div className="font-medium text-slate-700">{displayValue(patientInfo.diaChi)}</div>
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Địa chỉ thường trú</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.diaChiThuongTru)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Địa chỉ liên lạc</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.diaChiLienLac)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Địa chỉ cơ quan</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.diaChiCoQuan)}</div>
-                      </div>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div>
-                          <div className="text-xs text-slate-400">Tỉnh/Thành ID</div>
-                          <div className="font-medium text-slate-700">{displayValue(patientInfo.tinhThanhId)}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-slate-400">Quận/Huyện ID</div>
-                          <div className="font-medium text-slate-700">{displayValue(patientInfo.quanHuyenId)}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-slate-400">Xã/Phường ID</div>
-                          <div className="font-medium text-slate-700">{displayValue(patientInfo.xaPhuongId)}</div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* THÔNG TIN NHÂN KHẨU HỌC */}
-                  <div className="mb-6">
-                    <h3 className="text-sm font-semibold text-slate-600 mb-3 flex items-center gap-2">
-                      📊 Thông tin nhân khẩu học
-                    </h3>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-lg">
-                      <div>
-                        <div className="text-xs text-slate-400">Nghề nghiệp ID</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.ngheNghiepId)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Quốc tịch ID</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.quocTichId)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Dân tộc ID</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.danTocId)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Trình độ văn hóa ID</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.trinhDoVanHoaId)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Tình trạng hôn nhân ID</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.tinhTrangHonNhanId)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Việt Kiều</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.vietKieu)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Người nước ngoài</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.nguoiNuocNgoai)}</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* THÔNG TIN Y TẾ */}
-                  <div className="mb-6">
-                    <h3 className="text-sm font-semibold text-slate-600 mb-3 flex items-center gap-2">
-                      🏥 Thông tin y tế
-                    </h3>
-                    <div className="space-y-3 bg-slate-50 p-3 rounded-lg">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <div className="text-xs text-slate-400">Nhóm máu</div>
-                          <div className="font-medium text-slate-700">{displayValue(patientInfo.nhomMau)}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-slate-400">Yếu tố Rh</div>
-                          <div className="font-medium text-slate-700">{displayValue(patientInfo.yeuToRh)}</div>
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-red-400 font-medium">⚠️ Tiền sử dị ứng</div>
-                        <div className={`font-medium p-2 rounded mt-1 ${patientInfo.tienSuDiUng ? 'text-red-700 bg-red-50' : 'text-slate-500'}`}>
-                          {displayValue(patientInfo.tienSuDiUng)}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-amber-500 font-medium">📋 Tiền sử bệnh</div>
-                        <div className={`font-medium p-2 rounded mt-1 ${patientInfo.tienSuBenh ? 'text-slate-700 bg-amber-50' : 'text-slate-500'}`}>
-                          {displayValue(patientInfo.tienSuBenh)}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-orange-500 font-medium">🚬 Tiền sử hút thuốc lá</div>
-                        <div className={`font-medium p-2 rounded mt-1 ${patientInfo.tienSuHutThuocLa ? 'text-slate-700 bg-orange-50' : 'text-slate-500'}`}>
-                          {displayValue(patientInfo.tienSuHutThuocLa)}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* NGƯỜI LIÊN HỆ */}
-                  <div className="mb-6">
-                    <h3 className="text-sm font-semibold text-slate-600 mb-3 flex items-center gap-2">
-                      👥 Người liên hệ
-                    </h3>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-lg">
-                      <div>
-                        <div className="text-xs text-slate-400">Người liên hệ</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.nguoiLienHe)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Thông tin người liên hệ</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.thongTinNguoiLienHe)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Mối quan hệ ID</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.moiQuanHeId)}</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* THÔNG TIN TỬ VONG */}
-                  <div className="mb-6">
-                    <h3 className="text-sm font-semibold text-slate-600 mb-3 flex items-center gap-2">
-                      ⚰️ Thông tin tử vong
-                    </h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-slate-50 p-3 rounded-lg">
-                      <div>
-                        <div className="text-xs text-slate-400">Tử vong</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.tuVong)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Ngày tử vong</div>
-                        <div className="font-medium text-slate-700">{formatDate(patientInfo.ngayTuVong)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Thời gian tử vong</div>
-                        <div className="font-medium text-slate-700">{formatDate(patientInfo.thoiGianTuVong)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Nguyên nhân tử vong ID</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.nguyenNhanTuVongId)}</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* THÔNG TIN HỆ THỐNG */}
-                  <div className="mb-6">
-                    <h3 className="text-sm font-semibold text-slate-600 mb-3 flex items-center gap-2">
-                      ⚙️ Thông tin hệ thống
-                    </h3>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-lg">
-                      <div>
-                        <div className="text-xs text-slate-400">Trạng thái</div>
-                        <div className="font-medium text-slate-700">{patientInfo.active ? 'Hoạt động' : 'Không hoạt động'}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Bệnh viện ID</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.benhVienId)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Site ID</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.siteId)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Ngày tạo</div>
-                        <div className="font-medium text-slate-700">{formatDate(patientInfo.ngayTao)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Ngày cập nhật</div>
-                        <div className="font-medium text-slate-700">{formatDate(patientInfo.ngayCapNhat)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Người tạo ID</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.nguoiTaoId)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Người cập nhật ID</div>
-                        <div className="font-medium text-slate-700">{displayValue(patientInfo.nguoiCapNhatId)}</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* GHI CHÚ */}
-                  <div className="mb-6">
-                    <h3 className="text-sm font-semibold text-slate-600 mb-3 flex items-center gap-2">
-                      📝 Ghi chú
-                    </h3>
                     <div className="bg-slate-50 p-3 rounded-lg">
-                      <div className="font-medium text-slate-600 italic">
-                        {displayValue(patientInfo.ghiChu)}
-                      </div>
+                      <p className="text-slate-500 text-xs mb-1">Giới tính</p>
+                      <p className="font-semibold text-slate-700">{patientInfo.gioiTinh || '---'}</p>
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-lg col-span-2">
+                      <p className="text-slate-500 text-xs mb-1">Địa chỉ</p>
+                      <p className="font-semibold text-slate-700 truncate">{patientInfo.diaChi || 'Chưa cập nhật'}</p>
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-lg">
+                      <p className="text-slate-500 text-xs mb-1">Nhóm máu</p>
+                      <p className="font-semibold text-red-600">{patientInfo.nhomMau || '---'}</p>
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-lg">
+                      <p className="text-slate-500 text-xs mb-1">BHYT</p>
+                      <p className="font-semibold text-green-600">{patientInfo.bhyt || 'Có'}</p>
                     </div>
                   </div>
-
-                  {/* Confidence */}
-                  {identifyResult?.faces.find(f => f.recognized) && (
-                    <div className="pt-4 border-t">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-slate-500">Độ tin cậy nhận diện</span>
-                        <span className="font-semibold text-emerald-600">
-                          {((identifyResult.faces.find(f => f.recognized)?.confidence || 0) * 100).toFixed(1)}%
-                        </span>
-                      </div>
-                      <div className="mt-2 h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-emerald-500 rounded-full transition-all"
-                          style={{ 
-                            width: `${(identifyResult.faces.find(f => f.recognized)?.confidence || 0) * 100}%` 
-                          }}
-                        />
-                      </div>
+                  
+                  <div className="mt-auto pt-6">
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-3">
+                        <CheckCircle2 className="w-6 h-6 text-green-600" />
+                        <div>
+                            <p className="text-green-800 font-bold">Đã xác thực</p>
+                            <p className="text-green-600 text-xs">Dữ liệu đã được đồng bộ vào hệ thống</p>
+                        </div>
                     </div>
-                  )}
-                </div>
-
-                {/* Success indicator */}
-                <div className="px-6 py-4 bg-emerald-50 border-t border-emerald-100">
-                  <div className="flex items-center gap-2 text-emerald-700">
-                    <CheckCircle2 className="w-5 h-5" />
-                    <span className="font-medium">Nhận diện thành công!</span>
                   </div>
                 </div>
-              </div>
-            )}
-
-            {/* Hướng dẫn khi chưa nhận diện */}
-            {!identifyResult && !error && (
-              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6">
-                <h3 className="font-semibold text-blue-800 mb-3">Hướng dẫn sử dụng</h3>
-                <ul className="space-y-2 text-blue-700">
-                  <li className="flex items-start gap-2">
-                    <span className="w-6 h-6 rounded-full bg-blue-200 text-blue-800 flex items-center justify-center text-sm font-medium flex-shrink-0">1</span>
-                    <span>Đảm bảo khuôn mặt nằm trong khung camera</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="w-6 h-6 rounded-full bg-blue-200 text-blue-800 flex items-center justify-center text-sm font-medium flex-shrink-0">2</span>
-                    <span>Nhấn nút "Nhận diện ngay" để chụp và phân tích</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="w-6 h-6 rounded-full bg-blue-200 text-blue-800 flex items-center justify-center text-sm font-medium flex-shrink-0">3</span>
-                    <span>Thông tin bệnh nhân sẽ hiển thị nếu đã đăng ký</span>
-                  </li>
-                </ul>
-              </div>
-            )}
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-slate-400 text-center">
+                  <Scan className="w-20 h-20 mb-6 opacity-20" />
+                  <h3 className="text-lg font-semibold text-slate-500 mb-2">Chưa có thông tin</h3>
+                  <p className="text-sm max-w-[200px]">
+                    Hệ thống sẽ tự động hiển thị thông tin khi nhận diện được khuôn mặt
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
+
+          {/* 2. Recent History List */}
+          <div className="h-1/3 bg-slate-800 rounded-2xl shadow-xl overflow-hidden flex flex-col border border-slate-700">
+            <div className="p-4 border-b border-slate-700 flex justify-between items-center">
+              <h3 className="font-bold text-slate-200 flex items-center gap-2">
+                <Clock className="w-4 h-4" />
+                Lịch sử gần đây
+              </h3>
+              <span className="text-xs text-slate-400">{recentDetections.length} lượt hôm nay</span>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar">
+              {recentDetections.map((record) => (
+                <div 
+                  key={record.id} 
+                  className={`p-3 rounded-xl flex items-center gap-3 transition-colors ${
+                    latestDetection?.id === record.id 
+                      ? 'bg-blue-600/20 border border-blue-500/50' 
+                      : 'bg-slate-700/50 hover:bg-slate-700 border border-transparent'
+                  }`}
+                >
+                  <div className="w-10 h-10 rounded-full bg-slate-600 flex items-center justify-center text-slate-300 font-bold text-xs">
+                    {record.patientName.charAt(0)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-slate-200 font-medium text-sm truncate">{record.patientName}</p>
+                    <p className="text-slate-400 text-xs">{record.maYTe}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-slate-300 text-xs font-mono">{formatDate(record.detectedAt)}</p>
+                    <p className="text-green-400 text-[10px]">{(record.confidence * 100).toFixed(0)}%</p>
+                  </div>
+                </div>
+              ))}
+              
+              {recentDetections.length === 0 && (
+                <div className="text-center py-8 text-slate-500 text-sm">
+                  Chưa có lượt nhận diện nào
+                </div>
+              )}
+            </div>
+          </div>
+
         </div>
       </div>
     </div>

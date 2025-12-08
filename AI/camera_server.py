@@ -41,6 +41,7 @@ fall_detector = None
 face_recognizer = None
 is_running = False
 current_frame = None
+raw_frame = None  # Frame gốc không có AI overlay
 frame_lock = threading.Lock()
 
 # AI settings
@@ -48,6 +49,7 @@ ai_settings = {
     "ai_enabled": True,
     "fall_detection_enabled": True,
     "face_recognition_enabled": False,
+    "auto_detection_enabled": True,  # Auto-record face detection to backend
 }
 
 # Stats
@@ -80,15 +82,17 @@ def initialize_camera():
     if ai_root not in sys.path:
         sys.path.insert(0, ai_root)
     
-    # Try GPU face recognition first, fallback to fast CPU version
+    # Use deep learning face embedding (MobileFaceNet ONNX)
     try:
-        from face_recognition_gpu import GPUFaceRecognition
-        USE_GPU_FACE = True
-        logger.info("🎮 Using GPU Face Recognition (CUDA)")
+        from face_embedding import FaceEmbedding
+        USE_EMBEDDING = True
+        logger.info("🧠 Using Deep Learning Face Embedding (MobileFaceNet ONNX)")
     except ImportError as e:
+        logger.error(f"❌ Failed to import FaceEmbedding: {e}")
+        # Fallback to fast CPU version
         from face_recognition_fast import FastFaceRecognition
-        USE_GPU_FACE = False
-        logger.info("💻 Using Fast Face Recognition (CPU)")
+        USE_EMBEDDING = False
+        logger.info("💻 Fallback to Fast Face Recognition (CPU)")
     
     config = load_config()
     
@@ -99,8 +103,16 @@ def initialize_camera():
         if camera.connect():
             logger.info("✅ Camera connected")
         else:
-            logger.error("❌ Camera connection failed")
-            return False
+            logger.warning("⚠️ Camera IP failed, trying webcam fallback...")
+            # Fallback to webcam
+            fallback_source = config.get('camera', {}).get('fallback_source', 0)
+            camera.cap = cv2.VideoCapture(fallback_source)
+            if camera.cap.isOpened():
+                camera.is_connected = True
+                logger.info(f"✅ Webcam fallback connected (device {fallback_source})")
+            else:
+                logger.error("❌ Camera connection failed (IP and webcam)")
+                return False
     
     # Initialize fall detector
     fall_config = config.get('fall_detection', {})
@@ -108,17 +120,23 @@ def initialize_camera():
     fall_detector = YOLOFallDetector(fall_config)
     logger.info("✅ YOLOv8-Pose initialized")
     
-    # Initialize GPU Face Recognition (optimized for NVIDIA GPU)
+    # Initialize Deep Learning Face Embedding
     face_config = config.get('face_recognition', {})
     face_config['database_path'] = str(Path(__file__).parent / "data" / "faces_db.pkl")
     face_config['faces_folder'] = str(Path(__file__).parent / "data" / "faces")
-    face_config['detection_interval'] = 3  # Process every 3 frames (GPU is faster)
-    face_config['process_scale'] = 0.75  # Higher resolution with GPU
-    face_config['threshold'] = 0.6  # Similarity threshold
-    face_config['use_fp16'] = True  # Use FP16 for faster GPU inference
+    face_config['detection_interval'] = 5  # Process every 5 frames
+    face_config['process_scale'] = 0.75  # Slightly lower resolution for speed
+    face_config['threshold'] = 0.5  # Cosine similarity threshold (0.5 for embeddings)
     
-    if USE_GPU_FACE:
-        face_recognizer = GPUFaceRecognition(face_config)
+    # Backend API configuration for auto-detection
+    face_config['backend_url'] = config.get('backend', {}).get('url', 'http://localhost:5000')
+    face_config['auto_detection_enabled'] = True
+    face_config['min_face_size'] = 160  # Minimum face width (px) for auto-detection (~1m distance)
+    face_config['camera_id'] = config.get('camera', {}).get('id', 'camera_01')
+    face_config['location'] = config.get('camera', {}).get('location', 'Cổng chính')
+    
+    if USE_EMBEDDING:
+        face_recognizer = FaceEmbedding(face_config)
     else:
         face_recognizer = FastFaceRecognition(face_config)
     
@@ -131,103 +149,118 @@ def initialize_camera():
 
 def process_frames():
     """Background thread for processing frames"""
-    global current_frame, is_running, stats
+    global current_frame, raw_frame, is_running, stats
     
     frame_count = 0
     fps_start = time.time()
+    error_count = 0
+    max_errors = 10  # Max consecutive errors before reconnect
     
     while is_running:
-        if camera is None:
-            time.sleep(0.1)
-            continue
-        
-        # IMPORTANT: Flush buffer to get latest frame and reduce latency
-        # Read multiple frames quickly to skip buffered old frames
-        for _ in range(2):  # Skip 2 buffered frames
-            camera.cap.grab()
-        
-        ret, frame = camera.read()
-        if not ret or frame is None:
-            continue
-        
-        frame_count += 1
-        
-        # Resize for processing
-        process_frame = cv2.resize(frame, (1280, 720))
-        display_frame = process_frame.copy()
-        
-        # Run AI if enabled
-        if ai_settings["ai_enabled"]:
-            # Fall Detection
-            if ai_settings["fall_detection_enabled"] and fall_detector:
-                result = fall_detector.process_frame(process_frame)
-                display_frame = result.get('annotated_frame', display_frame)
-                
-                # Update stats
-                stats["state"] = result.get('state', 'unknown')
-                if hasattr(stats["state"], 'value'):
-                    stats["state"] = stats["state"].value
-                
-                if result.get('fall_detected'):
-                    stats["falls_detected"] += 1
-                    # Emit fall event via WebSocket
-                    socketio.emit('fall_detected', {
-                        'timestamp': time.time(),
-                        'confidence': result.get('confidence', 0.9)
-                    })
+        try:
+            if camera is None:
+                time.sleep(0.1)
+                continue
             
-            # Face Recognition
-            if ai_settings["face_recognition_enabled"] and face_recognizer:
-                face_result = face_recognizer.process_frame(display_frame)
-                display_frame = face_result.get('annotated_frame', display_frame)
+            # IMPORTANT: Flush buffer to get latest frame and reduce latency
+            # Read multiple frames quickly to skip buffered old frames
+            for _ in range(2):  # Skip 2 buffered frames
+                camera.cap.grab()
+            
+            ret, frame = camera.read()
+            if not ret or frame is None:
+                error_count += 1
+                if error_count > max_errors:
+                    logger.warning("Too many frame errors, attempting reconnect...")
+                    camera.connect()
+                    error_count = 0
+                time.sleep(0.1)
+                continue
+            
+            error_count = 0  # Reset on success
+            frame_count += 1
+            
+            # Resize for processing
+            process_frame = cv2.resize(frame, (1280, 720))
+            display_frame = process_frame.copy()
+            
+            # Lưu raw frame (không có AI overlay) cho trang đăng ký
+            with frame_lock:
+                raw_frame = process_frame.copy()
+            
+            # Run AI if enabled
+            if ai_settings["ai_enabled"]:
+                # Fall Detection
+                if ai_settings["fall_detection_enabled"] and fall_detector:
+                    result = fall_detector.process_frame(process_frame)
+                    display_frame = result.get('annotated_frame', display_frame)
+                    
+                    # Update stats
+                    stats["state"] = result.get('state', 'unknown')
+                    if hasattr(stats["state"], 'value'):
+                        stats["state"] = stats["state"].value
+                    
+                    if result.get('fall_detected'):
+                        stats["falls_detected"] += 1
+                        # Emit fall event via WebSocket
+                        socketio.emit('fall_detected', {
+                            'timestamp': time.time(),
+                            'confidence': result.get('confidence', 0.9)
+                        })
                 
-                # Update stats
-                stats["faces_recognized"] = face_result.get('recognized_count', 0)
-                
-                # Track recognized persons
-                recognized = [f for f in face_result.get('faces', []) if f.get('recognized')]
-                if recognized:
-                    stats["recognized_persons"] = [
-                        {'id': f['person_id'], 'name': f['person_name'], 'confidence': f['confidence']}
-                        for f in recognized
-                    ]
-                    # Emit recognition event
-                    socketio.emit('face_recognized', {
-                        'timestamp': time.time(),
-                        'persons': stats["recognized_persons"]
-                    })
-        
-        # Calculate FPS
-        elapsed = time.time() - fps_start
-        if elapsed > 0:
-            stats["fps"] = frame_count / elapsed
-        
-        # Add overlay
-        overlay_y = 30
-        cv2.putText(display_frame, f"FPS: {stats['fps']:.1f}", (10, overlay_y),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        
-        if ai_settings["fall_detection_enabled"]:
-            overlay_y += 25
-            cv2.putText(display_frame, f"State: {stats['state']}", (10, overlay_y),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-        
-        if ai_settings["face_recognition_enabled"]:
-            overlay_y += 25
-            cv2.putText(display_frame, f"Faces: {stats['faces_recognized']}", (10, overlay_y),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-        
-        # Update current frame
-        with frame_lock:
-            current_frame = display_frame.copy()
-        
-        # Emit frame via WebSocket (lower framerate for web)
-        if frame_count % 3 == 0:  # Every 3rd frame
-            _, buffer = cv2.imencode('.jpg', display_frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
-            frame_base64 = base64.b64encode(buffer).decode('utf-8')
-            socketio.emit('frame', {'image': frame_base64})
-        
-        # No sleep - process as fast as possible for lowest latency
+                # Face Recognition
+                if ai_settings["face_recognition_enabled"] and face_recognizer:
+                    # Enable auto_record for automatic detection logging
+                    auto_record = ai_settings.get("auto_detection_enabled", True)
+                    face_result = face_recognizer.process_frame(display_frame, auto_record=auto_record)
+                    display_frame = face_result.get('annotated_frame', display_frame)
+                    
+                    # Update stats
+                    stats["faces_recognized"] = face_result.get('recognized_count', 0)
+                    
+                    # Track recognized persons
+                    recognized = [f for f in face_result.get('faces', []) if f.get('recognized')]
+                    if recognized:
+                        stats["recognized_persons"] = [
+                            {'id': f['person_id'], 'name': f['person_name'], 'confidence': f['confidence']}
+                            for f in recognized
+                        ]
+                        # Emit recognition event
+                        socketio.emit('face_recognized', {
+                            'timestamp': time.time(),
+                            'persons': stats["recognized_persons"]
+                        })
+            
+            # Calculate FPS
+            elapsed = time.time() - fps_start
+            if elapsed > 0:
+                stats["fps"] = frame_count / elapsed
+            
+            # Add overlay
+            overlay_y = 30
+            cv2.putText(display_frame, f"FPS: {stats['fps']:.1f}", (10, overlay_y),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            
+            if ai_settings["fall_detection_enabled"]:
+                overlay_y += 25
+                cv2.putText(display_frame, f"State: {stats['state']}", (10, overlay_y),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            
+            if ai_settings["face_recognition_enabled"]:
+                overlay_y += 25
+                cv2.putText(display_frame, f"Faces: {stats['faces_recognized']}", (10, overlay_y),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            
+            # Update current frame
+            with frame_lock:
+                current_frame = display_frame.copy()
+            
+            # Small sleep to prevent CPU overload
+            time.sleep(0.01)
+            
+        except Exception as e:
+            logger.error(f"Frame processing error: {e}")
+            time.sleep(0.1)
 
 
 def generate_mjpeg():
@@ -249,12 +282,38 @@ def generate_mjpeg():
         time.sleep(0.016)  # ~60 FPS for smoother stream
 
 
+def generate_raw_mjpeg():
+    """Generate RAW MJPEG stream without AI overlay (for registration page)"""
+    while True:
+        with frame_lock:
+            if raw_frame is None:
+                time.sleep(0.01)
+                continue
+            frame = raw_frame.copy()
+        
+        # Lower quality for faster transmission
+        _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+        frame_bytes = buffer.tobytes()
+        
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+        
+        time.sleep(0.016)  # ~60 FPS for smoother stream
+
+
 # ============== API Routes ==============
 
 @app.route('/api/stream')
 def video_stream():
-    """MJPEG video stream endpoint"""
+    """MJPEG video stream endpoint (with AI overlay)"""
     return Response(generate_mjpeg(),
+                   mimetype='multipart/x-mixed-replace; boundary=frame')
+
+
+@app.route('/api/stream/raw')
+def video_stream_raw():
+    """RAW MJPEG video stream endpoint (without AI overlay - for registration)"""
+    return Response(generate_raw_mjpeg(),
                    mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
@@ -288,6 +347,8 @@ def update_settings():
         ai_settings['fall_detection_enabled'] = data['fall_detection_enabled']
     if 'face_recognition_enabled' in data:
         ai_settings['face_recognition_enabled'] = data['face_recognition_enabled']
+    if 'auto_detection_enabled' in data:
+        ai_settings['auto_detection_enabled'] = data['auto_detection_enabled']
     
     logger.info(f"Settings updated: {ai_settings}")
     return jsonify(ai_settings)
@@ -308,6 +369,35 @@ def camera_status():
         "settings": ai_settings,
         "stats": stats
     })
+
+
+@app.route('/api/faces/sync', methods=['POST'])
+def sync_faces():
+    """Sync face database with Backend API"""
+    if face_recognizer is None:
+        return jsonify({"error": "Face recognition not initialized"}), 503
+    
+    try:
+        face_recognizer.sync_with_backend()
+        return jsonify({
+            "success": True,
+            "message": "Synced with backend",
+            "registered_count": len(face_recognizer.registered_faces),
+            "detected_today": len(face_recognizer.detected_today)
+        })
+    except Exception as e:
+        logger.error(f"Sync failed: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/faces/reset-detections', methods=['POST'])
+def reset_detections():
+    """Reset detected today cache (for testing)"""
+    if face_recognizer is None:
+        return jsonify({"error": "Face recognition not initialized"}), 503
+    
+    face_recognizer.reset_detected_today()
+    return jsonify({"success": True, "message": "Reset detected today cache"})
 
 
 # ============== Face Recognition API ==============
@@ -349,10 +439,13 @@ def get_face_image(person_id):
     if face_recognizer is None:
         return jsonify({"error": "Face recognition not initialized"}), 503
     
-    if person_id in face_recognizer.registered_faces:
-        face = face_recognizer.registered_faces[person_id]
-        if face.image_path and os.path.exists(face.image_path):
-            return send_file(face.image_path, mimetype='image/jpeg')
+    # Look for image in faces folder
+    faces_folder = Path('data/faces') / person_id
+    if faces_folder.exists():
+        # Return first image found
+        for ext in ['*.jpg', '*.png', '*.jpeg']:
+            for img_file in faces_folder.glob(ext):
+                return send_file(str(img_file), mimetype='image/jpeg')
     
     return jsonify({"error": "Image not found"}), 404
 
@@ -382,18 +475,22 @@ def register_face():
     # Get image from upload or current frame
     if 'image' in request.files:
         file = request.files['image']
+        logger.info(f"📷 Received file: {file.filename}, content_type: {file.content_type}")
         if file.filename:
             # Read file content as bytes
             file_bytes = file.read()
+            logger.info(f"📷 File size: {len(file_bytes)} bytes")
             
             # Use face_recognizer.read_image to handle HEIC and other formats
             frame = face_recognizer.read_image(file_bytes)
             
             if frame is None:
+                logger.error(f"❌ Could not decode image from {file.filename}")
                 return jsonify({
                     "success": False,
                     "error": "Không thể đọc file ảnh. Định dạng hỗ trợ: JPG, PNG, HEIC/HEIF"
                 }), 400
+            logger.info(f"✅ Image decoded: {frame.shape}")
         else:
             return jsonify({"error": "Empty file"}), 400
     else:
@@ -404,7 +501,9 @@ def register_face():
             frame = current_frame.copy()
     
     # Register face (supports adding multiple images per person)
+    logger.info(f"👤 Registering face for {person_id} ({person_name})")
     success, message = face_recognizer.register_face(frame, person_id, person_name, person_type)
+    logger.info(f"👤 Result: success={success}, message={message}")
     
     if success:
         # Get updated face info
@@ -447,18 +546,28 @@ def register_from_camera():
             return jsonify({"error": "No camera frame available"}), 503
         frame = current_frame.copy()
     
-    # Register face
-    success, message = face_recognizer.register_face(frame, person_id, person_name, person_type)
+    # Register face - save image to folder and register
+    faces_folder = Path('data/faces') / person_id
+    faces_folder.mkdir(parents=True, exist_ok=True)
+    
+    # Save image with timestamp
+    import time
+    timestamp = int(time.time())
+    image_path = faces_folder / f"{person_id}_{timestamp}.jpg"
+    cv2.imwrite(str(image_path), frame)
+    
+    # Register face feature
+    success = face_recognizer.register_face(person_id, frame)
     
     if success:
         return jsonify({
             "success": True,
-            "message": message,
+            "message": f"Face registered successfully for {person_name}",
             "person_id": person_id,
             "person_name": person_name
         })
     else:
-        return jsonify({"success": False, "error": message}), 400
+        return jsonify({"success": False, "error": "Could not detect face in frame"}), 400
 
 
 @app.route('/api/faces/<person_id>', methods=['DELETE'])
@@ -467,7 +576,7 @@ def delete_face(person_id):
     if face_recognizer is None:
         return jsonify({"error": "Face recognition not initialized"}), 503
     
-    if face_recognizer.remove_face(person_id):
+    if face_recognizer.delete_face(person_id):
         return jsonify({"success": True, "message": f"Deleted face: {person_id}"})
     else:
         return jsonify({"error": "Face not found"}), 404

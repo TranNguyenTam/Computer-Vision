@@ -1,5 +1,6 @@
 using HospitalVision.API.Data;
 using HospitalVision.API.Models;
+using HospitalVision.API.Models.DTOs;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.SqlClient;
@@ -557,11 +558,16 @@ public class FaceController : ControllerBase
                                 h.NgayThucHien.Value.Date == today &&
                                 (h.Huy == null || h.Huy == false));
 
+            // Đếm số lượng nhận diện hôm nay
+            var detectionsToday = await _qmsContext.DetectionHistories
+                .CountAsync(d => d.SessionDate == today);
+
             return Ok(new
             {
                 totalImages,
                 totalPatients,
-                queueToday
+                queueToday,
+                detectionsToday
             });
         }
         catch (Exception ex)
@@ -569,6 +575,266 @@ public class FaceController : ControllerBase
             _logger.LogError(ex, "Error getting face stats");
             return StatusCode(500, new { message = "Lỗi server" });
         }
+    }
+
+    // =====================================================
+    // API cho AI Camera Server - Nhận diện tự động
+    // =====================================================
+
+    /// Lấy tất cả embeddings đã đăng ký để AI load
+    [HttpGet("embeddings")]
+    public async Task<ActionResult> GetAllEmbeddings()
+    {
+        try
+        {
+            var embeddings = await _qmsContext.FaceImages
+                .Where(f => f.IsActive && f.Embedding != null && f.EmbeddingSize > 0)
+                .Select(f => new 
+                {
+                    f.MaYTe,
+                    f.Embedding,
+                    f.EmbeddingSize,
+                    f.ModelName
+                })
+                .ToListAsync();
+
+            // Group by MAYTE và convert embedding từ byte[] sang float[]
+            var result = embeddings
+                .GroupBy(e => e.MaYTe)
+                .Select(g => new 
+                {
+                    MaYTe = g.Key,
+                    Embeddings = g.Select(e => new 
+                    {
+                        e.EmbeddingSize,
+                        e.ModelName,
+                        // Convert byte[] to float[]
+                        Vector = e.Embedding != null ? ConvertBytesToFloats(e.Embedding) : null
+                    }).ToList()
+                })
+                .ToList();
+
+            return Ok(new { success = true, data = result, count = result.Count });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting embeddings");
+            return StatusCode(500, new { success = false, message = "Lỗi server" });
+        }
+    }
+
+    /// Lưu embedding khi đăng ký khuôn mặt
+    [HttpPost("embeddings")]
+    public async Task<ActionResult> SaveEmbedding([FromBody] SaveEmbeddingRequest request)
+    {
+        try
+        {
+            // Kiểm tra MAYTE tồn tại
+            var benhNhan = await _hospitalContext.BenhNhans
+                .FirstOrDefaultAsync(b => b.MaYTe == request.MaYTe);
+
+            if (benhNhan == null)
+            {
+                return NotFound(new { success = false, message = $"Không tìm thấy bệnh nhân với MAYTE: {request.MaYTe}" });
+            }
+
+            // Convert float[] to byte[]
+            var embeddingBytes = ConvertFloatsToBytes(request.Embedding);
+
+            // Tìm ảnh đã có hoặc tạo mới
+            var faceImage = await _qmsContext.FaceImages
+                .FirstOrDefaultAsync(f => f.MaYTe == request.MaYTe && f.ImagePath == request.ImagePath);
+
+            if (faceImage != null)
+            {
+                // Cập nhật embedding cho ảnh đã có
+                faceImage.Embedding = embeddingBytes;
+                faceImage.EmbeddingSize = request.Embedding.Length;
+                faceImage.ModelName = request.ModelName ?? "Facenet512";
+            }
+            else
+            {
+                // Tạo mới
+                faceImage = new FaceImage
+                {
+                    MaYTe = request.MaYTe,
+                    ImagePath = request.ImagePath ?? $"{request.MaYTe}_{DateTime.Now.Ticks}.jpg",
+                    Embedding = embeddingBytes,
+                    EmbeddingSize = request.Embedding.Length,
+                    ModelName = request.ModelName ?? "Facenet512",
+                    CreatedAt = DateTime.Now,
+                    IsActive = true
+                };
+                _qmsContext.FaceImages.Add(faceImage);
+            }
+
+            await _qmsContext.SaveChangesAsync();
+
+            _logger.LogInformation("Saved embedding for MAYTE: {MaYTe}, size: {Size}", 
+                request.MaYTe, request.Embedding.Length);
+
+            return Ok(new { 
+                success = true, 
+                message = "Đã lưu embedding",
+                patientName = benhNhan.TenBenhNhan
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error saving embedding");
+            return StatusCode(500, new { success = false, message = "Lỗi server" });
+        }
+    }
+
+    /// Ghi nhận diện tự động - chỉ ghi 1 lần mỗi người mỗi ngày
+    [HttpPost("detection")]
+    public async Task<ActionResult> RecordDetection([FromBody] RecordDetectionRequest request)
+    {
+        try
+        {
+            var today = DateTime.Today;
+
+            // Kiểm tra đã ghi nhận hôm nay chưa
+            var existing = await _qmsContext.DetectionHistories
+                .FirstOrDefaultAsync(d => d.MaYTe == request.MaYTe && d.SessionDate == today);
+
+            if (existing != null)
+            {
+                // Đã ghi nhận rồi, không ghi lại
+                return Ok(new { 
+                    success = true, 
+                    alreadyRecorded = true,
+                    message = "Bệnh nhân đã được ghi nhận hôm nay",
+                    detectionId = existing.Id
+                });
+            }
+
+            // Lấy thông tin bệnh nhân
+            var benhNhan = await _hospitalContext.BenhNhans
+                .FirstOrDefaultAsync(b => b.MaYTe == request.MaYTe);
+
+            // Tạo bản ghi mới
+            var detection = new DetectionHistory
+            {
+                MaYTe = request.MaYTe,
+                PatientName = benhNhan?.TenBenhNhan ?? request.PatientName,
+                Confidence = request.Confidence,
+                DetectedAt = DateTime.Now,
+                CameraId = request.CameraId,
+                Location = request.Location,
+                SessionDate = today,
+                Note = request.Note
+            };
+
+            _qmsContext.DetectionHistories.Add(detection);
+            await _qmsContext.SaveChangesAsync();
+
+            _logger.LogInformation("Recorded detection for MAYTE: {MaYTe}, confidence: {Conf}", 
+                request.MaYTe, request.Confidence);
+
+            return Ok(new { 
+                success = true, 
+                alreadyRecorded = false,
+                detectionId = detection.Id,
+                patientName = detection.PatientName,
+                message = "Đã ghi nhận nhận diện"
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error recording detection");
+            return StatusCode(500, new { success = false, message = "Lỗi server" });
+        }
+    }
+
+    /// Lấy lịch sử nhận diện hôm nay
+    [HttpGet("detections/today")]
+    public async Task<ActionResult> GetDetectionsToday()
+    {
+        try
+        {
+            var today = DateTime.Today;
+            var detections = await _qmsContext.DetectionHistories
+                .Where(d => d.SessionDate == today)
+                .OrderByDescending(d => d.DetectedAt)
+                .Select(d => new 
+                {
+                    d.Id,
+                    d.MaYTe,
+                    d.PatientName,
+                    d.Confidence,
+                    d.DetectedAt,
+                    d.CameraId,
+                    d.Location
+                })
+                .ToListAsync();
+
+            return Ok(new { success = true, data = detections, count = detections.Count });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting detections today");
+            return StatusCode(500, new { success = false, message = "Lỗi server" });
+        }
+    }
+
+    /// Lấy danh sách MAYTE đã nhận diện hôm nay (để AI kiểm tra nhanh)
+    [HttpGet("detections/today/mayte-list")]
+    public async Task<ActionResult> GetDetectedMaYTeToday()
+    {
+        try
+        {
+            var today = DateTime.Today;
+            var maYTeList = await _qmsContext.DetectionHistories
+                .Where(d => d.SessionDate == today)
+                .Select(d => d.MaYTe)
+                .ToListAsync();
+
+            return Ok(new { success = true, data = maYTeList });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting detected MAYTE list");
+            return StatusCode(500, new { success = false, message = "Lỗi server" });
+        }
+    }
+
+    /// Reset lịch sử nhận diện (cho testing)
+    [HttpDelete("detections/today")]
+    public async Task<ActionResult> ClearDetectionsToday()
+    {
+        try
+        {
+            var today = DateTime.Today;
+            var detections = await _qmsContext.DetectionHistories
+                .Where(d => d.SessionDate == today)
+                .ToListAsync();
+
+            _qmsContext.DetectionHistories.RemoveRange(detections);
+            await _qmsContext.SaveChangesAsync();
+
+            return Ok(new { success = true, message = $"Đã xóa {detections.Count} bản ghi" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error clearing detections");
+            return StatusCode(500, new { success = false, message = "Lỗi server" });
+        }
+    }
+
+    // Helper methods for embedding conversion
+    private static float[] ConvertBytesToFloats(byte[] bytes)
+    {
+        var floats = new float[bytes.Length / sizeof(float)];
+        Buffer.BlockCopy(bytes, 0, floats, 0, bytes.Length);
+        return floats;
+    }
+
+    private static byte[] ConvertFloatsToBytes(float[] floats)
+    {
+        var bytes = new byte[floats.Length * sizeof(float)];
+        Buffer.BlockCopy(floats, 0, bytes, 0, bytes.Length);
+        return bytes;
     }
 
     /// Chuyển đổi mã giới tính từ database sang text hiển thị

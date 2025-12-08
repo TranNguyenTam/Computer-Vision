@@ -3,6 +3,47 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace HospitalVision.API.Models;
 
+/// <summary>
+/// Bảng lưu lịch sử nhận diện tự động - mỗi bệnh nhân chỉ được ghi 1 lần trong ngày
+/// </summary>
+[Table("DETECTION_HISTORY")]
+public class DetectionHistory
+{
+    [Key]
+    [Column("ID")]
+    public int Id { get; set; }
+    
+    [Required]
+    [Column("MAYTE")]
+    [StringLength(50)]
+    public string MaYTe { get; set; } = string.Empty;
+    
+    [Column("PATIENT_NAME")]
+    [StringLength(200)]
+    public string? PatientName { get; set; }
+    
+    [Column("CONFIDENCE")]
+    public double Confidence { get; set; }
+    
+    [Column("DETECTED_AT")]
+    public DateTime DetectedAt { get; set; } = DateTime.Now;
+    
+    [Column("CAMERA_ID")]
+    [StringLength(50)]
+    public string? CameraId { get; set; }
+    
+    [Column("LOCATION")]
+    [StringLength(200)]
+    public string? Location { get; set; }
+    
+    [Column("SESSION_DATE")]
+    public DateTime SessionDate { get; set; } = DateTime.Today;
+    
+    [Column("NOTE")]
+    [StringLength(500)]
+    public string? Note { get; set; }
+}
+
 [Table("FACE_IMAGES")]
 public class FaceImage
 {

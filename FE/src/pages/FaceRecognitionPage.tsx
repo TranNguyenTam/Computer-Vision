@@ -1,21 +1,21 @@
 import {
-  AlertCircle,
-  Camera,
-  Check,
-  CheckCircle2,
-  Image as ImageIcon,
-  Info,
-  Loader2,
-  Plus,
-  RefreshCw,
-  Search,
-  Trash2,
-  Upload,
-  User,
-  UserCheck,
-  UserPlus,
-  Users,
-  X
+    AlertCircle,
+    Camera,
+    Check,
+    CheckCircle2,
+    Image as ImageIcon,
+    Info,
+    Loader2,
+    Plus,
+    RefreshCw,
+    Search,
+    Trash2,
+    Upload,
+    User,
+    UserCheck,
+    UserPlus,
+    Users,
+    X
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 
@@ -35,6 +35,7 @@ interface AISettings {
   ai_enabled: boolean;
   fall_detection_enabled: boolean;
   face_recognition_enabled: boolean;
+  auto_detection_enabled?: boolean;
 }
 
 interface PatientInfo {
@@ -52,12 +53,26 @@ interface SearchResult {
   loading: boolean;
 }
 
+interface DetectionRecord {
+  id: number;
+  maYTe: string;
+  patientName: string;
+  confidence: number;
+  detectedAt: string;
+  cameraId?: string;
+  location?: string;
+}
+
 const FaceRecognitionPage: React.FC = () => {
   const [faces, setFaces] = useState<RegisteredFace[]>([]);
   const [loading, setLoading] = useState(true);
   const [serverOnline, setServerOnline] = useState(false);
   const [settings, setSettings] = useState<AISettings | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Detection history
+  const [detectionsToday, setDetectionsToday] = useState<DetectionRecord[]>([]);
+  const [loadingDetections, setLoadingDetections] = useState(false);
   
   // Registration modal
   const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -75,6 +90,24 @@ const FaceRecognitionPage: React.FC = () => {
   const [patientSearch, setPatientSearch] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult>({ patients: [], loading: false });
   const [selectedPatient, setSelectedPatient] = useState<PatientInfo | null>(null);
+
+  // Fetch detections today
+  const fetchDetectionsToday = useCallback(async () => {
+    setLoadingDetections(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/face/detections/today`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setDetectionsToday(data.data || []);
+        }
+      }
+    } catch {
+      // Ignore
+    } finally {
+      setLoadingDetections(false);
+    }
+  }, []);
 
   // Fetch registered faces
   const fetchFaces = useCallback(async () => {
@@ -117,7 +150,12 @@ const FaceRecognitionPage: React.FC = () => {
   useEffect(() => {
     fetchFaces();
     fetchSettings();
-  }, [fetchFaces, fetchSettings]);
+    fetchDetectionsToday();
+    
+    // Refresh detections every 30 seconds
+    const interval = setInterval(fetchDetectionsToday, 30000);
+    return () => clearInterval(interval);
+  }, [fetchFaces, fetchSettings, fetchDetectionsToday]);
 
   // Search patients from database
   const searchPatients = useCallback(async (query: string) => {
@@ -362,7 +400,7 @@ const FaceRecognitionPage: React.FC = () => {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
         <div className="bg-white rounded-xl p-5 border border-slate-200">
           <div className="flex items-center gap-4">
             <div className="w-11 h-11 bg-blue-50 rounded-lg flex items-center justify-center">
@@ -371,6 +409,17 @@ const FaceRecognitionPage: React.FC = () => {
             <div>
               <p className="text-2xl font-semibold text-slate-800">{faces.length}</p>
               <p className="text-sm text-slate-500">Bệnh nhân đã đăng ký</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl p-5 border border-slate-200">
+          <div className="flex items-center gap-4">
+            <div className="w-11 h-11 bg-emerald-50 rounded-lg flex items-center justify-center">
+              <UserCheck className="w-5 h-5 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-semibold text-slate-800">{detectionsToday.length}</p>
+              <p className="text-sm text-slate-500">Nhận diện hôm nay</p>
             </div>
           </div>
         </div>
@@ -394,11 +443,64 @@ const FaceRecognitionPage: React.FC = () => {
             </div>
             <div>
               <p className="text-base font-semibold text-slate-800">Mức độ nhận diện</p>
-              <p className="text-xs text-slate-500">60-70%: Thấp | 70-80%: TB | 80-90%: Cao | &gt;90%: Rất cao</p>
+              <p className="text-xs text-slate-500">60-70%: Thấp | 70-80%: TB | &gt;80%: Cao</p>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Detections Today */}
+      {detectionsToday.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200">
+          <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+            <h3 className="font-medium text-slate-800 flex items-center gap-2">
+              <UserCheck className="w-5 h-5 text-emerald-600" />
+              Nhận diện hôm nay ({detectionsToday.length})
+            </h3>
+            <button
+              onClick={fetchDetectionsToday}
+              disabled={loadingDetections}
+              className="text-sm text-slate-500 hover:text-slate-700 flex items-center gap-1"
+            >
+              <RefreshCw className={`w-4 h-4 ${loadingDetections ? 'animate-spin' : ''}`} />
+              Làm mới
+            </button>
+          </div>
+          <div className="p-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {detectionsToday.slice(0, 9).map((detection) => (
+                <div key={detection.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+                  <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center">
+                    <User className="w-5 h-5 text-emerald-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-slate-800 truncate">{detection.patientName}</p>
+                    <p className="text-xs text-slate-500">
+                      {detection.maYTe} • {new Date(detection.detectedAt).toLocaleTimeString('vi-VN')}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      detection.confidence >= 0.8 
+                        ? 'bg-emerald-100 text-emerald-700' 
+                        : detection.confidence >= 0.7
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-slate-100 text-slate-600'
+                    }`}>
+                      {(detection.confidence * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {detectionsToday.length > 9 && (
+              <p className="text-center text-sm text-slate-500 mt-3">
+                +{detectionsToday.length - 9} bệnh nhân khác
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Search and List */}
       <div className="bg-white rounded-xl border border-slate-200">
@@ -608,12 +710,16 @@ const FaceRecognitionPage: React.FC = () => {
 
               {/* Camera preview or upload */}
               {registerMode === 'camera' ? (
-                <div className="aspect-video bg-slate-900 rounded-lg overflow-hidden">
+                <div className="aspect-video bg-slate-900 rounded-lg overflow-hidden relative">
+                  {/* Sử dụng raw stream không có AI overlay */}
                   <img
-                    src={`${CAMERA_SERVER_URL}/api/stream`}
+                    src={`${CAMERA_SERVER_URL}/api/stream/raw`}
                     alt="Camera preview"
                     className="w-full h-full object-cover"
                   />
+                  <div className="absolute bottom-2 left-2 text-xs text-white/70 bg-black/50 px-2 py-1 rounded">
+                    💡 Đảm bảo khuôn mặt rõ ràng, đủ sáng
+                  </div>
                 </div>
               ) : (
                 <div className="border-2 border-dashed border-slate-300 rounded-lg p-6">

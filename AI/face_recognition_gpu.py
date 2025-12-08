@@ -189,7 +189,8 @@ class GPUFaceRecognition:
                 'annotated_frame': annotated,
                 'faces': self._format_faces(self.last_results),
                 'recognized_count': len(recognized),
-                'total_count': len(self.last_results)
+                'total_count': len(self.last_results),
+                'total_faces': len(self.last_results)
             }
         
         results = []
@@ -240,7 +241,8 @@ class GPUFaceRecognition:
             'annotated_frame': annotated_frame,
             'faces': self._format_faces(results),
             'recognized_count': len(recognized),
-            'total_count': len(results)
+            'total_count': len(results),
+            'total_faces': len(results)
         }
     
     def _format_faces(self, results: List[Dict]) -> List[Dict]:

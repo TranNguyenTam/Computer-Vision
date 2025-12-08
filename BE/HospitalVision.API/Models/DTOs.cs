@@ -102,3 +102,41 @@ public class RecentDetectionDto
     public DateTime Timestamp { get; set; }
     public string? Location { get; set; }
 }
+
+// =====================================================
+// DTOs cho AI Camera Server - Nhận diện tự động
+// =====================================================
+
+/// Request để lưu embedding khi đăng ký khuôn mặt
+public class SaveEmbeddingRequest
+{
+    public string MaYTe { get; set; } = string.Empty;
+    public float[] Embedding { get; set; } = Array.Empty<float>();
+    public string? ImagePath { get; set; }
+    public string? ModelName { get; set; } = "Facenet512";
+}
+
+/// Request để ghi nhận diện tự động
+public class RecordDetectionRequest
+{
+    public string MaYTe { get; set; } = string.Empty;
+    public string? PatientName { get; set; }
+    public double Confidence { get; set; }
+    public string? CameraId { get; set; }
+    public string? Location { get; set; }
+    public string? Note { get; set; }
+}
+
+/// Response khi lấy embeddings
+public class EmbeddingData
+{
+    public string MaYTe { get; set; } = string.Empty;
+    public List<EmbeddingVector> Embeddings { get; set; } = new();
+}
+
+public class EmbeddingVector
+{
+    public int EmbeddingSize { get; set; }
+    public string? ModelName { get; set; }
+    public float[]? Vector { get; set; }
+}

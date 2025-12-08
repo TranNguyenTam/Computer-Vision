@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace HospitalVision.API.Data;
 
-/// Chứa bảng HangDoiPhongBan và FACE_IMAGES
+/// Chứa bảng HangDoiPhongBan, FACE_IMAGES và DETECTION_HISTORY
 public class QmsDbContext : DbContext
 {
     public QmsDbContext(DbContextOptions<QmsDbContext> options) : base(options)
@@ -15,6 +15,9 @@ public class QmsDbContext : DbContext
     
     /// Bảng lưu ảnh khuôn mặt bệnh nhân
     public DbSet<FaceImage> FaceImages => Set<FaceImage>();
+    
+    /// Bảng lưu lịch sử nhận diện tự động
+    public DbSet<DetectionHistory> DetectionHistories => Set<DetectionHistory>();
     
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -39,6 +42,17 @@ public class QmsDbContext : DbContext
             entity.HasIndex(e => e.MaYTe);
             entity.HasIndex(e => e.IsActive);
             entity.HasIndex(e => new { e.MaYTe, e.IsActive });
+        });
+        
+        // DETECTION_HISTORY configuration - lịch sử nhận diện
+        modelBuilder.Entity<DetectionHistory>(entity =>
+        {
+            entity.ToTable("DETECTION_HISTORY");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedOnAdd();
+            entity.HasIndex(e => e.MaYTe);
+            entity.HasIndex(e => e.SessionDate);
+            entity.HasIndex(e => new { e.MaYTe, e.SessionDate }).IsUnique(); // Mỗi người 1 lần/ngày
         });
     }
 }
