@@ -53,6 +53,7 @@ public class FallAlertResponse
     public double Confidence { get; set; }
     public string Status { get; set; } = string.Empty;
     public bool HasImage { get; set; }
+    public string? FrameData { get; set; }  // Base64 encoded image
 }
 
 /// Patient detection event request DTO
@@ -101,6 +102,7 @@ public class RecentDetectionDto
     public string PatientName { get; set; } = string.Empty;
     public DateTime Timestamp { get; set; }
     public string? Location { get; set; }
+    public double Confidence { get; set; }  // Độ chính xác nhận diện
 }
 
 // =====================================================

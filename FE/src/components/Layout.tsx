@@ -1,20 +1,19 @@
 import {
-    Activity,
-    AlertTriangle,
-    Bell,
-    Camera,
-    ClipboardList,
-    Home,
-    Menu,
-    Scan,
-    Settings,
-    UserCircle,
-    Users,
-    Volume2,
-    VolumeX,
-    Wifi,
-    WifiOff,
-    X
+  Activity,
+  AlertTriangle,
+  Bell,
+  Camera,
+  ClipboardList,
+  Home,
+  Menu,
+  Scan,
+  UserCircle,
+  Users,
+  Volume2,
+  VolumeX,
+  Wifi,
+  WifiOff,
+  X
 } from 'lucide-react';
 import React from 'react';
 import { PageType } from '../types';
@@ -37,7 +36,7 @@ const navItems: { id: PageType; label: string; icon: React.ReactNode }[] = [
   { id: 'face-identify', label: 'Nhận diện khuôn mặt', icon: <Scan className="w-5 h-5" /> },
   { id: 'cameras', label: 'Camera', icon: <Camera className="w-5 h-5" /> },
   { id: 'alerts-history', label: 'Lịch sử cảnh báo', icon: <ClipboardList className="w-5 h-5" /> },
-  { id: 'settings', label: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
+  // { id: 'settings', label: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
 ];
 
 const Layout: React.FC<LayoutProps> = ({

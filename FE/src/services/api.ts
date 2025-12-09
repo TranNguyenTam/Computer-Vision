@@ -98,7 +98,7 @@ export const alertApi = {
     confidence: number;
     frameData?: string;
   }): Promise<FallAlert> => {
-    const response = await api.post('/alerts/fall', data);
+    const response = await api.post('/fall-alert', data);
     return response.data;
   },
 

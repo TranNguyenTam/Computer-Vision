@@ -95,7 +95,7 @@ public class AlertService : IAlertService
     public Task<List<FallAlertResponse>> GetActiveAlertsAsync()
     {
         var alerts = Alerts
-            .Where(a => a.Status == "Active")
+            .Where(a => a.Status == "Active" || a.Status == "Acknowledged")
             .OrderByDescending(a => a.Timestamp)
             .Select(a => new FallAlertResponse
             {
@@ -106,7 +106,8 @@ public class AlertService : IAlertService
                 Location = a.Location,
                 Confidence = a.Confidence,
                 Status = a.Status,
-                HasImage = !string.IsNullOrEmpty(a.FrameData)
+                HasImage = !string.IsNullOrEmpty(a.FrameData),
+                FrameData = a.FrameData
             })
             .ToList();
         
@@ -128,7 +129,8 @@ public class AlertService : IAlertService
                 Location = a.Location,
                 Confidence = a.Confidence,
                 Status = a.Status,
-                HasImage = !string.IsNullOrEmpty(a.FrameData)
+                HasImage = !string.IsNullOrEmpty(a.FrameData),
+                FrameData = a.FrameData
             })
             .ToList();
         

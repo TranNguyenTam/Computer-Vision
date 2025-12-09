@@ -1,21 +1,19 @@
 import {
-    AlertCircle,
-    Camera,
-    Check,
-    CheckCircle2,
-    Image as ImageIcon,
-    Info,
-    Loader2,
-    Plus,
-    RefreshCw,
-    Search,
-    Trash2,
-    Upload,
-    User,
-    UserCheck,
-    UserPlus,
-    Users,
-    X
+  AlertCircle,
+  Camera,
+  Check,
+  CheckCircle2,
+  Image as ImageIcon,
+  Loader2,
+  Plus,
+  Search,
+  Trash2,
+  Upload,
+  User,
+  UserCheck,
+  UserPlus,
+  Users,
+  X
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 
@@ -376,17 +374,6 @@ const FaceRecognitionPage: React.FC = () => {
           </span>
           
           {/* Toggle Face Recognition */}
-          <button
-            onClick={toggleFaceRecognition}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-              settings?.face_recognition_enabled
-                ? 'bg-blue-500 text-white hover:bg-blue-600'
-                : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-            }`}
-          >
-            <UserCheck className="w-4 h-4" />
-            {settings?.face_recognition_enabled ? 'Đang bật' : 'Đang tắt'}
-          </button>
           
           {/* Register button */}
           <button
@@ -426,25 +413,14 @@ const FaceRecognitionPage: React.FC = () => {
         <div className="bg-white rounded-xl p-5 border border-slate-200">
           <div className="flex items-center gap-4">
             <div className="w-11 h-11 bg-violet-50 rounded-lg flex items-center justify-center">
-              <Camera className="w-5 h-5 text-violet-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-semibold text-slate-800">
-                {settings?.face_recognition_enabled ? 'Bật' : 'Tắt'}
-              </p>
-              <p className="text-sm text-slate-500">Trạng thái AI</p>
             </div>
           </div>
         </div>
         <div className="bg-white rounded-xl p-5 border border-slate-200">
           <div className="flex items-center gap-4">
             <div className="w-11 h-11 bg-amber-50 rounded-lg flex items-center justify-center">
-              <Info className="w-5 h-5 text-amber-600" />
             </div>
-            <div>
-              <p className="text-base font-semibold text-slate-800">Mức độ nhận diện</p>
-              <p className="text-xs text-slate-500">60-70%: Thấp | 70-80%: TB | &gt;80%: Cao</p>
-            </div>
+          
           </div>
         </div>
       </div>
@@ -457,14 +433,6 @@ const FaceRecognitionPage: React.FC = () => {
               <UserCheck className="w-5 h-5 text-emerald-600" />
               Nhận diện hôm nay ({detectionsToday.length})
             </h3>
-            <button
-              onClick={fetchDetectionsToday}
-              disabled={loadingDetections}
-              className="text-sm text-slate-500 hover:text-slate-700 flex items-center gap-1"
-            >
-              <RefreshCw className={`w-4 h-4 ${loadingDetections ? 'animate-spin' : ''}`} />
-              Làm mới
-            </button>
           </div>
           <div className="p-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -517,13 +485,6 @@ const FaceRecognitionPage: React.FC = () => {
                 className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-200 focus:border-slate-400 transition-all text-sm"
               />
             </div>
-            <button
-              onClick={fetchFaces}
-              className="flex items-center gap-2 px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Làm mới
-            </button>
           </div>
         </div>
 

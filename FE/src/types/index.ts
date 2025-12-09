@@ -109,6 +109,7 @@ export interface RecentDetection {
   patientName: string;
   timestamp: string;
   location?: string;
+  confidence?: number;  // Độ chính xác nhận diện
 }
 
 // ==================== CAMERA ====================

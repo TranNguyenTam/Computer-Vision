@@ -1,27 +1,33 @@
 import {
-    AlertCircle,
-    AlertTriangle,
-    CheckCircle,
-    Clock,
-    MapPin,
-    RefreshCw,
-    User,
-    Volume2,
-    VolumeX,
-    XCircle,
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle,
+  Clock,
+  Image,
+  MapPin,
+  RefreshCw,
+  User,
+  Video,
+  XCircle
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { alertApi } from '../services/api';
 import { FallAlert } from '../types';
+
+const AI_SERVER_URL = import.meta.env.VITE_AI_URL || 'http://localhost:8000';
 
 const FallDetectionPage: React.FC = () => {
   const [activeAlerts, setActiveAlerts] = useState<FallAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [processingId, setProcessingId] = useState<number | null>(null);
+  const [showVideoStream, setShowVideoStream] = useState(true);
+  const [selectedAlert, setSelectedAlert] = useState<FallAlert | null>(null);
+  const [cameraStatus, setCameraStatus] = useState<'loading' | 'online' | 'offline'>('loading');
+  const [streamKey, setStreamKey] = useState(Date.now());
 
   const playAlertSound = useCallback(() => {
-    if (soundEnabled) {
+    if (soundEnabled) { 
       const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
@@ -51,6 +57,23 @@ const FallDetectionPage: React.FC = () => {
 
   useEffect(() => {
     fetchAlerts();
+    
+    // Check AI Server status
+    const checkCameraStatus = async () => {
+      try {
+        const response = await fetch(`${AI_SERVER_URL}/api/camera/status`);
+        if (response.ok) {
+          setCameraStatus('online');
+        } else {
+          setCameraStatus('offline');
+        }
+      } catch {
+        setCameraStatus('offline');
+      }
+    };
+    
+    checkCameraStatus();
+    const statusInterval = setInterval(checkCameraStatus, 5000);
     
     // SignalR realtime updates
     import('../services/signalr').then(({ default: signalRService }) => {
@@ -83,7 +106,10 @@ const FallDetectionPage: React.FC = () => {
     
     // Fallback polling every 10 seconds
     const interval = setInterval(fetchAlerts, 10000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      clearInterval(statusInterval);
+    };
   }, [fetchAlerts, playAlertSound]);
 
   const handleAcknowledge = async (alertId: number) => {
@@ -184,23 +210,86 @@ const FallDetectionPage: React.FC = () => {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setSoundEnabled(!soundEnabled)}
-            className={`p-2.5 rounded-lg transition-colors ${
-              soundEnabled ? 'bg-slate-100 text-slate-700' : 'bg-slate-50 text-slate-400'
+            onClick={() => setShowVideoStream(!showVideoStream)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+              showVideoStream
+                ? 'bg-blue-500 text-white hover:bg-blue-600'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
-            title={soundEnabled ? 'Tắt âm thanh' : 'Bật âm thanh'}
           >
-            {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-          </button>
-          <button
-            onClick={fetchAlerts}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-          >
-            <RefreshCw className="w-4 h-4" />
-            Làm mới
+            <Video className="w-4 h-4" />
+            {showVideoStream ? 'Ẩn camera' : 'Hiện camera'}
           </button>
         </div>
       </div>
+
+      {/* Video Stream Section */}
+      {showVideoStream && (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Video className="w-5 h-5 text-blue-600" />
+              <h3 className="font-semibold text-slate-800">Camera giám sát té ngã (AI)</h3>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`flex items-center gap-1 text-sm ${
+                cameraStatus === 'online' ? 'text-emerald-600' : 
+                cameraStatus === 'offline' ? 'text-red-600' : 'text-slate-400'
+              }`}>
+                <span className={`w-2 h-2 rounded-full ${
+                  cameraStatus === 'online' ? 'bg-emerald-500 animate-pulse' : 
+                  cameraStatus === 'offline' ? 'bg-red-500' : 'bg-slate-400'
+                }`}></span>
+                {cameraStatus === 'online' ? 'Đang hoạt động' : 
+                 cameraStatus === 'offline' ? 'Không kết nối' : 'Đang kiểm tra...'}
+              </span>
+              <button
+                onClick={() => setStreamKey(Date.now())}
+                className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
+                title="Làm mới stream"
+              >
+                <RefreshCw className="w-4 h-4 text-slate-500" />
+              </button>
+            </div>
+          </div>
+          <div className="aspect-video bg-slate-900 flex items-center justify-center relative">
+            {cameraStatus === 'online' ? (
+              <img
+                key={streamKey}
+                src={`${AI_SERVER_URL}/api/stream?t=${streamKey}`}
+                alt="Fall Detection Stream"
+                className="w-full h-full object-contain"
+                onError={() => setCameraStatus('offline')}
+              />
+            ) : cameraStatus === 'offline' ? (
+              <div className="flex flex-col items-center justify-center text-slate-400 p-8">
+                <Video className="w-12 h-12 mb-3 opacity-50" />
+                <p className="text-sm font-medium">Không thể kết nối camera</p>
+                <p className="text-xs mt-1">Kiểm tra AI Server ({AI_SERVER_URL})</p>
+                <button
+                  onClick={() => {
+                    setCameraStatus('loading');
+                    setStreamKey(Date.now());
+                    setTimeout(() => {
+                      fetch(`${AI_SERVER_URL}/api/camera/status`)
+                        .then(res => setCameraStatus(res.ok ? 'online' : 'offline'))
+                        .catch(() => setCameraStatus('offline'));
+                    }, 500);
+                  }}
+                  className="mt-4 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm flex items-center gap-2"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Thử kết nối lại
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center text-slate-400">
+                <div className="animate-spin rounded-full h-8 w-8 border-2 border-slate-400 border-t-white"></div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Alert Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -324,6 +413,15 @@ const FallDetectionPage: React.FC = () => {
 
                 {/* Actions */}
                 <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-100">
+                  {alert.hasImage && (
+                    <button
+                      onClick={() => setSelectedAlert(alert)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+                    >
+                      <Image className="w-4 h-4" />
+                      Xem ảnh
+                    </button>
+                  )}
                   {alert.status === 'Active' && (
                     <button
                       onClick={() => handleAcknowledge(alert.id)}
@@ -391,6 +489,64 @@ const FallDetectionPage: React.FC = () => {
           Tạo cảnh báo test
         </button>
       </div>
+
+      {/* Image Modal */}
+      {selectedAlert && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-hidden">
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="font-semibold text-slate-800">
+                Ảnh chụp té ngã #{selectedAlert.id}
+              </h3>
+              <button
+                onClick={() => setSelectedAlert(null)}
+                className="p-1 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <XCircle className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-4">
+              <div className="bg-black rounded-lg overflow-hidden">
+                {selectedAlert.frameData ? (
+                  <img
+                    src={`data:image/jpeg;base64,${selectedAlert.frameData}`}
+                    alt="Fall capture"
+                    className="w-full h-auto"
+                  />
+                ) : (
+                  <div className="aspect-video flex items-center justify-center text-slate-400">
+                    <p>Không có ảnh</p>
+                  </div>
+                )}
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-slate-500">Vị trí:</span>
+                  <span className="ml-2 font-medium">{selectedAlert.location}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">Thời gian:</span>
+                  <span className="ml-2 font-medium">{formatTime(selectedAlert.timestamp)}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">Độ tin cậy:</span>
+                  <span className="ml-2 font-medium text-red-600">
+                    {Math.round(selectedAlert.confidence * 100)}%
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-500">Trạng thái:</span>
+                  <span className={`ml-2 font-medium ${
+                    selectedAlert.status === 'Active' ? 'text-red-600' : 'text-amber-600'
+                  }`}>
+                    {getStatusText(selectedAlert.status)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

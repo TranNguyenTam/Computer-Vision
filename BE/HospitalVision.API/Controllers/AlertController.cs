@@ -67,8 +67,36 @@ public class AlertController : ControllerBase
             Location = alert.Location,
             Confidence = alert.Confidence,
             Status = alert.Status,
-            HasImage = !string.IsNullOrEmpty(alert.FrameData)
+            HasImage = !string.IsNullOrEmpty(alert.FrameData),
+            FrameData = alert.FrameData  // Include frame data
         });
+    }
+
+    /// Get alert image
+    [HttpGet("alerts/{id}/image")]
+    public async Task<ActionResult> GetAlertImage(int id)
+    {
+        var alert = await _alertService.GetAlertAsync(id);
+        
+        if (alert == null)
+        {
+            return NotFound(new { message = $"Alert with ID '{id}' not found" });
+        }
+
+        if (string.IsNullOrEmpty(alert.FrameData))
+        {
+            return NotFound(new { message = "No image available for this alert" });
+        }
+
+        try
+        {
+            var imageBytes = Convert.FromBase64String(alert.FrameData);
+            return File(imageBytes, "image/jpeg");
+        }
+        catch
+        {
+            return BadRequest(new { message = "Invalid image data" });
+        }
     }
 
     /// Update alert status

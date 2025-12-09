@@ -711,7 +711,7 @@ class FaceEmbedding:
             recognized = [f for f in self.last_results if f.get('person_id')]
             return {
                 'annotated_frame': annotated,
-                'faces': [self._convert_result(r) for r in self.last_results],
+                'faces': [self._convert_result(r) for r in recognized],  # Only recognized faces
                 'recognized_count': len(recognized)
             }
         
@@ -738,11 +738,11 @@ class FaceEmbedding:
         # Annotate frame
         annotated = self._annotate_frame(frame, results)
         
-        # Convert to camera_server format
+        # Only return recognized faces (confidence >= threshold)
         recognized = [f for f in results if f.get('person_id')]
         return {
             'annotated_frame': annotated,
-            'faces': [self._convert_result(r) for r in results],
+            'faces': [self._convert_result(r) for r in recognized],  # Only recognized faces
             'recognized_count': len(recognized)
         }
     
@@ -757,7 +757,9 @@ class FaceEmbedding:
         }
     
     def _annotate_frame(self, frame: np.ndarray, results: List[Dict]) -> np.ndarray:
-        """Draw face recognition results on frame"""
+        """Draw face recognition results on frame
+        Only show boxes for recognized faces (confidence >= threshold)
+        """
         annotated = frame.copy()
         
         for r in results:
@@ -765,25 +767,23 @@ class FaceEmbedding:
             person_id = r.get('person_id')
             similarity = r.get('similarity', 0)
             
+            # Only draw box for recognized faces (confidence >= 80%)
             if person_id:
                 # Matched - green box
                 color = (0, 255, 0)
-                label = f"{person_id} ({similarity:.2f})"
-            else:
-                # Unknown - red box
-                color = (0, 0, 255)
-                label = f"Unknown ({similarity:.2f})"
-            
-            # Draw box
-            cv2.rectangle(annotated, (x, y), (x + w, y + h), color, 2)
-            
-            # Draw label background
-            (label_w, label_h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
-            cv2.rectangle(annotated, (x, y - label_h - 10), (x + label_w, y), color, -1)
-            
-            # Draw label text
-            cv2.putText(annotated, label, (x, y - 5), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                label = f"{person_id} ({similarity*100:.0f}%)"
+                
+                # Draw box
+                cv2.rectangle(annotated, (x, y), (x + w, y + h), color, 2)
+                
+                # Draw label background
+                (label_w, label_h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+                cv2.rectangle(annotated, (x, y - label_h - 10), (x + label_w, y), color, -1)
+                
+                # Draw label text
+                cv2.putText(annotated, label, (x, y - 5), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            # Skip drawing for unknown/low confidence faces
         
         return annotated
     
@@ -824,13 +824,47 @@ class FaceEmbedding:
         return result
     
     def remove_person(self, person_id: str) -> bool:
-        """Remove a person from the database"""
+        """Remove a person from the database, backend, and local folder"""
+        removed = False
+        
+        # 1. Remove from memory (registered_faces dictionary)
         if person_id in self.registered_faces:
             del self.registered_faces[person_id]
             self._save_database()
-            logger.info(f"🗑️ Removed person {person_id} from database")
-            return True
-        return False
+            logger.info(f"🗑️ Removed person {person_id} from local database")
+            removed = True
+        
+        # 2. Delete folder in data/faces/{person_id}
+        person_folder = os.path.join(self.faces_folder, person_id)
+        if os.path.exists(person_folder):
+            try:
+                import shutil
+                shutil.rmtree(person_folder)
+                logger.info(f"🗑️ Deleted folder {person_folder}")
+                removed = True
+            except Exception as e:
+                logger.warning(f"Failed to delete folder {person_folder}: {e}")
+        
+        # 3. Delete from Backend API (SQL Server)
+        if self._delete_from_backend(person_id):
+            removed = True
+        
+        return removed
+    
+    def _delete_from_backend(self, person_id: str) -> bool:
+        """Delete face data from Backend API"""
+        try:
+            url = f"{self.backend_url}/api/face/patient/{person_id}"
+            response = requests.delete(url, timeout=10)
+            if response.status_code == 200:
+                logger.info(f"🗑️ Deleted {person_id} from Backend database")
+                return True
+            else:
+                logger.warning(f"Backend delete returned {response.status_code}")
+                return False
+        except Exception as e:
+            logger.warning(f"Failed to delete from backend: {e}")
+            return False
     
     def delete_face(self, person_id: str) -> bool:
         """Delete a face from database (alias for remove_person)"""

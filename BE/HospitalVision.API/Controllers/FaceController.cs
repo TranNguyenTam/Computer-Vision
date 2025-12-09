@@ -538,6 +538,50 @@ public class FaceController : ControllerBase
         }
     }
 
+    /// Xóa tất cả dữ liệu khuôn mặt của bệnh nhân theo MaYTe
+    [HttpDelete("patient/{maYTe}")]
+    public async Task<ActionResult> DeletePatientFaceData(string maYTe)
+    {
+        try
+        {
+            // Xóa tất cả FaceImages của bệnh nhân
+            var faceImages = await _qmsContext.FaceImages
+                .Where(f => f.MaYTe == maYTe)
+                .ToListAsync();
+            
+            if (faceImages.Any())
+            {
+                _qmsContext.FaceImages.RemoveRange(faceImages);
+                _logger.LogInformation($"Deleting {faceImages.Count} face images for patient {maYTe}");
+            }
+
+            // Xóa lịch sử nhận diện của bệnh nhân
+            var detections = await _qmsContext.DetectionHistories
+                .Where(d => d.MaYTe == maYTe)
+                .ToListAsync();
+            
+            if (detections.Any())
+            {
+                _qmsContext.DetectionHistories.RemoveRange(detections);
+                _logger.LogInformation($"Deleting {detections.Count} detection records for patient {maYTe}");
+            }
+
+            await _qmsContext.SaveChangesAsync();
+
+            return Ok(new { 
+                success = true, 
+                message = $"Đã xóa toàn bộ dữ liệu khuôn mặt của bệnh nhân {maYTe}",
+                deletedImages = faceImages.Count,
+                deletedDetections = detections.Count
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting patient face data for {MaYTe}", maYTe);
+            return StatusCode(500, new { success = false, message = "Lỗi server khi xóa dữ liệu" });
+        }
+    }
+
     /// Thống kê số lượng ảnh đã đăng ký
     [HttpGet("stats")]
     public async Task<ActionResult> GetStats()

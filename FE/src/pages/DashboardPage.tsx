@@ -1,12 +1,10 @@
 import {
-    Activity,
-    AlertTriangle,
-    Clock,
-    MapPin,
-    RefreshCw,
-    TrendingUp,
-    UserCheck,
-    Users,
+  AlertTriangle,
+  Clock,
+  MapPin,
+  TrendingUp,
+  UserCheck,
+  Users
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { alertApi, dashboardApi } from '../services/api';
@@ -74,14 +72,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToAlerts }) => 
           <h1 className="text-2xl font-semibold text-slate-800">Tổng quan</h1>
           <p className="text-slate-500 text-sm mt-1">Hệ thống giám sát bệnh viện</p>
         </div>
-        <button
-          onClick={handleRefresh}
-          disabled={refreshing}
-          className="flex items-center gap-2 px-4 py-2 text-sm text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-all"
-        >
-          <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-          Làm mới
-        </button>
       </div>
 
       {/* Stats Cards */}
@@ -151,20 +141,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToAlerts }) => 
           </div>
         </div>
 
-        <div className="bg-white rounded-xl p-6 border border-slate-200 hover:border-slate-300 hover:shadow-sm transition-all">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-slate-500">Lịch hẹn hôm nay</p>
-              <p className="text-3xl font-semibold text-slate-800 mt-2">
-                {stats?.todayAppointments || 0}
-              </p>
-              <p className="text-xs text-slate-400 mt-2">Cuộc hẹn đã lên lịch</p>
-            </div>
-            <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center">
-              <Activity className="w-6 h-6 text-slate-600" />
-            </div>
-          </div>
-        </div>
+        
       </div>
 
       {/* Active Alerts */}
@@ -273,7 +250,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToAlerts }) => 
           <div className="px-5 py-4 border-b border-slate-100">
             <h3 className="font-medium text-slate-800 flex items-center gap-2">
               <UserCheck className="w-4 h-4 text-slate-400" />
-              Phát hiện gần đây
+              Nhận diện gần đây
             </h3>
           </div>
           <div className="p-5">
@@ -281,20 +258,29 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToAlerts }) => 
               <div className="space-y-3">
                 {stats.recentDetections.slice(0, 5).map((detection, index) => (
                   <div key={index} className="flex items-center gap-3 py-2">
-                    <div className="w-9 h-9 bg-slate-100 rounded-full flex items-center justify-center flex-shrink-0">
-                      <UserCheck className="w-4 h-4 text-slate-500" />
+                    <div className="w-9 h-9 bg-emerald-100 rounded-full flex items-center justify-center flex-shrink-0">
+                      <UserCheck className="w-4 h-4 text-emerald-600" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-slate-700 truncate">
+                      <p className="text-sm text-slate-700 truncate font-medium">
                         {detection.patientName}
                       </p>
                       <p className="text-xs text-slate-400">
-                        {detection.patientId} · {detection.location || 'Không rõ'}
+                        {detection.patientId} · {detection.location || 'Cổng chính'}
                       </p>
                     </div>
-                    <span className="text-xs text-slate-400">
-                      {formatTime(detection.timestamp)}
-                    </span>
+                    <div className="text-right">
+                      <span className="text-xs text-slate-500">
+                        {formatTime(detection.timestamp)}
+                      </span>
+                      {detection.confidence && (
+                        <p className={`text-xs font-medium ${
+                          detection.confidence >= 0.8 ? 'text-emerald-600' : 'text-amber-600'
+                        }`}>
+                          {(detection.confidence * 100).toFixed(0)}%
+                        </p>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

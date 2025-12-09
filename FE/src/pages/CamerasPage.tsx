@@ -1,22 +1,19 @@
 import {
-    AlertTriangle,
-    Camera,
-    Eye,
-    EyeOff,
-    Maximize2,
-    RefreshCw,
-    Settings,
-    Video,
-    VideoOff,
-    Wifi,
-    WifiOff,
-    X
+  Camera,
+  Maximize2,
+  RefreshCw,
+  Settings,
+  Video,
+  VideoOff,
+  Wifi,
+  WifiOff,
+  X
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Camera as CameraType } from '../types';
 
 // Camera streaming server URL
-const CAMERA_SERVER_URL = 'http://localhost:8080';
+const CAMERA_SERVER_URL = import.meta.env.VITE_AI_URL || 'http://localhost:8000';
 
 // Mock camera data
 const mockCameras: CameraType[] = [
@@ -25,11 +22,11 @@ const mockCameras: CameraType[] = [
     name: 'Camera Sảnh chính',
     location: 'Tầng 1 - Sảnh tiếp đón',
     status: 'online',
-    aiEnabled: true,
-    fallDetectionEnabled: true,
+    aiEnabled: false,
+    fallDetectionEnabled: false,
     faceRecognitionEnabled: false,
     lastActivity: new Date().toISOString(),
-    streamUrl: `${CAMERA_SERVER_URL}/api/stream`,
+    streamUrl: `${CAMERA_SERVER_URL}/api/stream/raw`,
   },
   {
     id: 'cam-2',
@@ -47,11 +44,6 @@ const CamerasPage: React.FC = () => {
   const [selectedCamera, setSelectedCamera] = useState<CameraType | null>(null);
   const [fullscreenCamera, setFullscreenCamera] = useState<CameraType | null>(null);
   const [serverStatus, setServerStatus] = useState<'online' | 'offline' | 'loading'>('loading');
-  const [aiSettings, setAiSettings] = useState({
-    ai_enabled: true,
-    fall_detection_enabled: true,
-    face_recognition_enabled: false,
-  });
 
   // Check camera server status
   const checkServerStatus = useCallback(async () => {
@@ -60,16 +52,12 @@ const CamerasPage: React.FC = () => {
       if (response.ok) {
         const data = await response.json();
         setServerStatus('online');
-        setAiSettings(data.settings);
         
         // Update first camera status
         setCameras(prev => prev.map((cam, index) => 
           index === 0 ? { 
             ...cam, 
             status: data.connected ? 'online' : 'offline',
-            aiEnabled: data.settings.ai_enabled,
-            fallDetectionEnabled: data.settings.fall_detection_enabled,
-            faceRecognitionEnabled: data.settings.face_recognition_enabled,
           } : cam
         ));
       } else {
@@ -85,86 +73,6 @@ const CamerasPage: React.FC = () => {
     const interval = setInterval(checkServerStatus, 5000);
     return () => clearInterval(interval);
   }, [checkServerStatus]);
-
-  const toggleCameraFeature = async (cameraId: string, feature: 'ai' | 'fall' | 'face') => {
-    // Update local state first
-    setCameras((prev) =>
-      prev.map((cam) => {
-        if (cam.id === cameraId) {
-          switch (feature) {
-            case 'ai':
-              return { ...cam, aiEnabled: !cam.aiEnabled };
-            case 'fall':
-              return { ...cam, fallDetectionEnabled: !cam.fallDetectionEnabled };
-            case 'face':
-              return { ...cam, faceRecognitionEnabled: !cam.faceRecognitionEnabled };
-          }
-        }
-        return cam;
-      })
-    );
-
-    // Send to camera server
-    if (cameraId === 'cam-1') {
-      try {
-        const newSettings = { ...aiSettings };
-        if (feature === 'ai') newSettings.ai_enabled = !aiSettings.ai_enabled;
-        if (feature === 'fall') newSettings.fall_detection_enabled = !aiSettings.fall_detection_enabled;
-        if (feature === 'face') newSettings.face_recognition_enabled = !aiSettings.face_recognition_enabled;
-        
-        await fetch(`${CAMERA_SERVER_URL}/api/settings`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newSettings),
-        });
-        setAiSettings(newSettings);
-      } catch (error) {
-        console.error('Failed to update settings:', error);
-      }
-    }
-  };
-
-  // Toggle AI feature directly (used in fullscreen mode)
-  const toggleAIFeature = async (feature: 'fall_detection' | 'face_recognition') => {
-    try {
-      const newSettings = { ...aiSettings };
-      if (feature === 'fall_detection') {
-        newSettings.fall_detection_enabled = !aiSettings.fall_detection_enabled;
-      } else if (feature === 'face_recognition') {
-        newSettings.face_recognition_enabled = !aiSettings.face_recognition_enabled;
-      }
-      
-      await fetch(`${CAMERA_SERVER_URL}/api/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newSettings),
-      });
-      
-      setAiSettings(newSettings);
-      
-      // Update camera state
-      setCameras((prev) =>
-        prev.map((cam, index) => 
-          index === 0 ? {
-            ...cam,
-            fallDetectionEnabled: newSettings.fall_detection_enabled,
-            faceRecognitionEnabled: newSettings.face_recognition_enabled,
-          } : cam
-        )
-      );
-      
-      // Update fullscreen camera if open
-      if (fullscreenCamera) {
-        setFullscreenCamera({
-          ...fullscreenCamera,
-          fallDetectionEnabled: newSettings.fall_detection_enabled,
-          faceRecognitionEnabled: newSettings.face_recognition_enabled,
-        });
-      }
-    } catch (error) {
-      console.error('Failed to toggle AI feature:', error);
-    }
-  };
 
   const getStatusText = (status: string) => {
     switch (status) {
@@ -191,7 +99,6 @@ const CamerasPage: React.FC = () => {
   };
 
   const onlineCameras = cameras.filter((c) => c.status === 'online').length;
-  const aiEnabledCameras = cameras.filter((c) => c.aiEnabled).length;
 
   return (
     <div className="space-y-8">
@@ -199,7 +106,7 @@ const CamerasPage: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-800">Quản lý Camera</h1>
-          <p className="text-slate-500 text-sm mt-1">Giám sát và cấu hình hệ thống camera</p>
+          <p className="text-slate-500 text-sm mt-1">Giám sát hệ thống camera</p>
         </div>
         <div className="flex items-center gap-3">
           <span className={`flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg ${
@@ -229,7 +136,7 @@ const CamerasPage: React.FC = () => {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         <div className="bg-white rounded-xl p-5 border border-slate-200 hover:border-slate-300 transition-all">
           <div className="flex items-center gap-4">
             <div className="w-11 h-11 bg-slate-100 rounded-lg flex items-center justify-center">
@@ -249,17 +156,6 @@ const CamerasPage: React.FC = () => {
             <div>
               <p className="text-2xl font-semibold text-slate-800">{onlineCameras}</p>
               <p className="text-sm text-slate-500">Đang hoạt động</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl p-5 border border-slate-200 hover:border-slate-300 transition-all">
-          <div className="flex items-center gap-4">
-            <div className="w-11 h-11 bg-violet-50 rounded-lg flex items-center justify-center">
-              <Eye className="w-5 h-5 text-violet-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-semibold text-slate-800">{aiEnabledCameras}</p>
-              <p className="text-sm text-slate-500">AI đang bật</p>
             </div>
           </div>
         </div>
@@ -322,16 +218,6 @@ const CamerasPage: React.FC = () => {
                 </span>
               </div>
 
-              {/* AI indicators - Chỉ hiển thị Fall Detection */}
-              {camera.status === 'online' && camera.aiEnabled && camera.fallDetectionEnabled && (
-                <div className="absolute top-3 right-3">
-                  <span className="text-xs bg-red-500/90 text-white px-2 py-1 rounded-md flex items-center gap-1">
-                    <AlertTriangle className="w-3 h-3" />
-                    Phát hiện té ngã
-                  </span>
-                </div>
-              )}
-
               {/* Controls */}
               {camera.status === 'online' && (
                 <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
@@ -360,7 +246,7 @@ const CamerasPage: React.FC = () => {
 
             {/* Camera Info */}
             <div className="p-4">
-              <div className="flex items-start justify-between mb-3">
+              <div className="flex items-start justify-between">
                 <div>
                   <h3 className="font-medium text-slate-800">{camera.name}</h3>
                   <p className="text-sm text-slate-500 mt-0.5">{camera.location}</p>
@@ -370,34 +256,6 @@ const CamerasPage: React.FC = () => {
                   className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all"
                 >
                   <Settings className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Feature toggles - Chỉ AI và Fall Detection */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => toggleCameraFeature(camera.id, 'ai')}
-                  disabled={camera.status !== 'online'}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-medium transition-all ${
-                    camera.aiEnabled && camera.status === 'online'
-                      ? 'bg-violet-100 text-violet-700'
-                      : 'bg-slate-100 text-slate-400'
-                  } ${camera.status !== 'online' ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80'}`}
-                >
-                  {camera.aiEnabled ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                  AI
-                </button>
-                <button
-                  onClick={() => toggleCameraFeature(camera.id, 'fall')}
-                  disabled={camera.status !== 'online' || !camera.aiEnabled}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-medium transition-all ${
-                    camera.fallDetectionEnabled && camera.aiEnabled && camera.status === 'online'
-                      ? 'bg-red-100 text-red-700'
-                      : 'bg-slate-100 text-slate-400'
-                  } ${camera.status !== 'online' || !camera.aiEnabled ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80'}`}
-                >
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                  Té ngã
                 </button>
               </div>
             </div>
@@ -435,6 +293,7 @@ const CamerasPage: React.FC = () => {
                   type="text"
                   value={selectedCamera.name}
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-200 focus:border-slate-400 transition-all text-sm"
+                  readOnly
                 />
               </div>
               <div>
@@ -443,28 +302,24 @@ const CamerasPage: React.FC = () => {
                   type="text"
                   value={selectedCamera.location}
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-200 focus:border-slate-400 transition-all text-sm"
+                  readOnly
                 />
               </div>
               <div>
                 <label className="block text-sm text-slate-600 mb-1.5">Stream URL</label>
                 <input
                   type="text"
-                  placeholder="rtsp://192.168.1.6:554/..."
+                  value={selectedCamera.streamUrl || 'Không có'}
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-200 focus:border-slate-400 transition-all text-sm font-mono"
+                  readOnly
                 />
               </div>
-              <div className="pt-3 flex gap-3">
+              <div className="pt-3">
                 <button
                   onClick={() => setSelectedCamera(null)}
-                  className="flex-1 px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition-all text-sm text-slate-600"
+                  className="w-full px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 transition-all text-sm font-medium"
                 >
-                  Hủy
-                </button>
-                <button
-                  onClick={() => setSelectedCamera(null)}
-                  className="flex-1 px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 transition-all text-sm font-medium"
-                >
-                  Lưu thay đổi
+                  Đóng
                 </button>
               </div>
             </div>
@@ -485,21 +340,12 @@ const CamerasPage: React.FC = () => {
                   <p className="text-white/60 text-sm">{fullscreenCamera.location}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                {/* AI Status indicator - Chỉ Fall Detection */}
-                {fullscreenCamera.aiEnabled && fullscreenCamera.fallDetectionEnabled && (
-                  <span className="text-sm bg-red-500/90 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5">
-                    <AlertTriangle className="w-4 h-4" />
-                    Phát hiện té ngã ON
-                  </span>
-                )}
-                <button
-                  onClick={() => setFullscreenCamera(null)}
-                  className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors"
-                >
-                  <X className="w-6 h-6 text-white" />
-                </button>
-              </div>
+              <button
+                onClick={() => setFullscreenCamera(null)}
+                className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors"
+              >
+                <X className="w-6 h-6 text-white" />
+              </button>
             </div>
           </div>
 
@@ -522,7 +368,7 @@ const CamerasPage: React.FC = () => {
             )}
           </div>
 
-          {/* Bottom Controls - Chỉ Fall Detection */}
+          {/* Bottom Controls */}
           <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
             <div className="flex items-center justify-center gap-4">
               <button 
@@ -531,17 +377,6 @@ const CamerasPage: React.FC = () => {
               >
                 <RefreshCw className="w-4 h-4" />
                 Làm mới
-              </button>
-              <button 
-                onClick={() => toggleAIFeature('fall_detection')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white transition-colors ${
-                  aiSettings.fall_detection_enabled 
-                    ? 'bg-red-500/80 hover:bg-red-500' 
-                    : 'bg-white/20 hover:bg-white/30'
-                }`}
-              >
-                <AlertTriangle className="w-4 h-4" />
-                {aiSettings.fall_detection_enabled ? 'Tắt phát hiện té ngã' : 'Bật phát hiện té ngã'}
               </button>
             </div>
           </div>

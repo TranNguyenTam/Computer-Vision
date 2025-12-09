@@ -1,21 +1,15 @@
 import {
-    Activity,
-    AlertCircle,
-    Calendar,
-    Camera,
-    CheckCircle2,
-    Clock,
-    CreditCard,
-    FileText,
-    Heart,
-    Loader2,
-    MapPin,
-    Phone,
-    Scan,
-    User,
-    UserCheck
+  Camera,
+  CheckCircle2,
+  Clock,
+  History,
+  Loader2,
+  Scan,
+  User,
+  UserCheck,
+  X
 } from 'lucide-react';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 const CAMERA_SERVER_URL = 'http://localhost:8080';
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -52,6 +46,7 @@ const FaceIdentifyPage: React.FC = () => {
   const [patientInfo, setPatientInfo] = useState<PatientInfo | null>(null);
   const [recentDetections, setRecentDetections] = useState<DetectionRecord[]>([]);
   const [isLoadingInfo, setIsLoadingInfo] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   // 1. Configure AI on mount (Kiosk Mode: Face ON, Fall OFF)
   useEffect(() => {
@@ -273,49 +268,87 @@ const FaceIdentifyPage: React.FC = () => {
             </div>
           </div>
 
-          {/* 2. Recent History List */}
-          <div className="h-1/3 bg-slate-800 rounded-2xl shadow-xl overflow-hidden flex flex-col border border-slate-700">
-            <div className="p-4 border-b border-slate-700 flex justify-between items-center">
-              <h3 className="font-bold text-slate-200 flex items-center gap-2">
-                <Clock className="w-4 h-4" />
-                Lịch sử gần đây
-              </h3>
-              <span className="text-xs text-slate-400">{recentDetections.length} lượt hôm nay</span>
+          {/* 2. History Button */}
+          <button
+            onClick={() => setShowHistoryModal(true)}
+            className="bg-slate-800 hover:bg-slate-700 text-white rounded-xl p-4 flex items-center justify-between transition-colors border border-slate-700"
+          >
+            <div className="flex items-center gap-3">
+              <History className="w-5 h-5" />
+              <span className="font-medium">Xem lịch sử nhận diện</span>
             </div>
-            <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar">
+            <div className="flex items-center gap-2">
+              <span className="bg-blue-600 text-xs px-2 py-1 rounded-full">{recentDetections.length} hôm nay</span>
+            </div>
+          </button>
+
+        </div>
+      </div>
+
+      {/* History Modal */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-2xl w-full max-w-lg max-h-[80vh] flex flex-col shadow-2xl border border-slate-700">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-slate-700 flex justify-between items-center">
+              <h3 className="font-bold text-white flex items-center gap-2">
+                <Clock className="w-5 h-5" />
+                Lịch sử nhận diện hôm nay
+              </h3>
+              <button
+                onClick={() => setShowHistoryModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-700 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
               {recentDetections.map((record) => (
                 <div 
                   key={record.id} 
-                  className={`p-3 rounded-xl flex items-center gap-3 transition-colors ${
+                  className={`p-4 rounded-xl flex items-center gap-4 transition-colors ${
                     latestDetection?.id === record.id 
                       ? 'bg-blue-600/20 border border-blue-500/50' 
                       : 'bg-slate-700/50 hover:bg-slate-700 border border-transparent'
                   }`}
                 >
-                  <div className="w-10 h-10 rounded-full bg-slate-600 flex items-center justify-center text-slate-300 font-bold text-xs">
+                  <div className="w-12 h-12 rounded-full bg-slate-600 flex items-center justify-center text-slate-300 font-bold">
                     {record.patientName.charAt(0)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-slate-200 font-medium text-sm truncate">{record.patientName}</p>
-                    <p className="text-slate-400 text-xs">{record.maYTe}</p>
+                    <p className="text-white font-medium truncate">{record.patientName}</p>
+                    <p className="text-slate-400 text-sm">{record.maYTe}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-slate-300 text-xs font-mono">{formatDate(record.detectedAt)}</p>
-                    <p className="text-green-400 text-[10px]">{(record.confidence * 100).toFixed(0)}%</p>
+                    <p className="text-slate-300 text-sm font-mono">{formatDate(record.detectedAt)}</p>
+                    <p className={`text-xs font-medium ${
+                      record.confidence >= 0.8 ? 'text-green-400' : 'text-yellow-400'
+                    }`}>
+                      {(record.confidence * 100).toFixed(0)}% độ chính xác
+                    </p>
                   </div>
                 </div>
               ))}
               
               {recentDetections.length === 0 && (
-                <div className="text-center py-8 text-slate-500 text-sm">
-                  Chưa có lượt nhận diện nào
+                <div className="text-center py-12 text-slate-500">
+                  <History className="w-12 h-12 mx-auto mb-4 opacity-30" />
+                  <p>Chưa có lượt nhận diện nào hôm nay</p>
                 </div>
               )}
             </div>
-          </div>
 
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-700">
+              <p className="text-center text-slate-400 text-sm">
+                Chỉ hiển thị các kết quả có độ chính xác ≥ 80%
+              </p>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

@@ -126,7 +126,7 @@ def initialize_camera():
     face_config['faces_folder'] = str(Path(__file__).parent / "data" / "faces")
     face_config['detection_interval'] = 5  # Process every 5 frames
     face_config['process_scale'] = 0.75  # Slightly lower resolution for speed
-    face_config['threshold'] = 0.5  # Cosine similarity threshold (0.5 for embeddings)
+    face_config['threshold'] = 0.80  # Cosine similarity threshold (80% confidence minimum)
     
     # Backend API configuration for auto-detection
     face_config['backend_url'] = config.get('backend', {}).get('url', 'http://localhost:5000')
@@ -207,6 +207,36 @@ def process_frames():
                             'timestamp': time.time(),
                             'confidence': result.get('confidence', 0.9)
                         })
+                        
+                        # Send fall alert to Backend API
+                        try:
+                            import requests
+                            fall_event = result.get('fall_event')
+                            frame_data = None
+                            if fall_event and fall_event.frame_data:
+                                frame_data = base64.b64encode(fall_event.frame_data).decode('utf-8')
+                            
+                            backend_url = load_config().get('backend', {}).get('url', 'http://localhost:5000')
+                            alert_data = {
+                                'patientId': None,  # Unknown patient
+                                'location': load_config().get('camera', {}).get('location', 'Camera 1'),
+                                'confidence': result.get('confidence', 0.9),
+                                'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                                'frameData': frame_data
+                            }
+                            
+                            response = requests.post(
+                                f"{backend_url}/api/fall-alert",
+                                json=alert_data,
+                                timeout=5
+                            )
+                            
+                            if response.status_code in [200, 201]:
+                                logger.info(f"✅ Fall alert sent to backend: {response.json()}")
+                            else:
+                                logger.warning(f"⚠️ Backend returned {response.status_code}: {response.text}")
+                        except Exception as e:
+                            logger.error(f"❌ Failed to send fall alert to backend: {e}")
                 
                 # Face Recognition
                 if ai_settings["face_recognition_enabled"] and face_recognizer:

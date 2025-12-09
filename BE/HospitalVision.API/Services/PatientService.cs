@@ -17,6 +17,7 @@ public interface IPatientService
 public class PatientService : IPatientService
 {
     private readonly HospitalDbContext _context;
+    private readonly QmsDbContext _qmsContext;
     private readonly ILogger<PatientService> _logger;
     
     // In-memory storage for detection events
@@ -24,9 +25,10 @@ public class PatientService : IPatientService
     // Shared storage for alerts (accessible from AlertService)
     public static readonly List<FallAlertMemory> SharedAlerts = new();
 
-    public PatientService(HospitalDbContext context, ILogger<PatientService> logger)
+    public PatientService(HospitalDbContext context, QmsDbContext qmsContext, ILogger<PatientService> logger)
     {
         _context = context;
+        _qmsContext = qmsContext;
         _logger = logger;
     }
 
@@ -89,6 +91,7 @@ public class PatientService : IPatientService
     public async Task<DashboardStatsDto> GetDashboardStatsAsync()
     {
         var today = DateTime.Today;
+        var todayUtc = DateTime.UtcNow.Date;
 
         // Count từ bảng TT_BENHNHAN thực tế
         var totalPatients = await _context.BenhNhans.CountAsync();
@@ -96,11 +99,21 @@ public class PatientService : IPatientService
         // Get alerts from shared storage
         var activeAlerts = SharedAlerts.Where(a => a.Status == "Active").ToList();
         
-        var patientsDetectedToday = _detectionEvents
-            .Where(d => d.Timestamp >= today)
-            .Select(d => d.PatientId)
+        // Get detections from database (DETECTION_HISTORY) - using QmsDbContext
+        var detectionsToday = await _qmsContext.DetectionHistories
+            .Where(d => d.DetectedAt >= todayUtc)
+            .ToListAsync();
+        
+        var patientsDetectedToday = detectionsToday
+            .Select(d => d.MaYTe)
             .Distinct()
             .Count();
+
+        // Get recent detections from database
+        var recentDetectionsFromDb = await _qmsContext.DetectionHistories
+            .OrderByDescending(d => d.DetectedAt)
+            .Take(10)
+            .ToListAsync();
 
         var stats = new DashboardStatsDto
         {
@@ -120,15 +133,14 @@ public class PatientService : IPatientService
                     Status = a.Status ?? "Unknown"
                 })
                 .ToList(),
-            RecentDetections = _detectionEvents
-                .OrderByDescending(d => d.Timestamp)
-                .Take(10)
+            RecentDetections = recentDetectionsFromDb
                 .Select(d => new RecentDetectionDto
                 {
-                    PatientId = d.PatientId,
-                    PatientName = d.PatientName,
-                    Timestamp = d.Timestamp,
-                    Location = d.Location
+                    PatientId = d.MaYTe,
+                    PatientName = d.PatientName ?? d.MaYTe,
+                    Timestamp = d.DetectedAt,
+                    Location = d.Location ?? "Cổng chính",
+                    Confidence = d.Confidence
                 })
                 .ToList()
         };
@@ -136,7 +148,7 @@ public class PatientService : IPatientService
         return stats;
     }
 
-    // Static methods for detection events
+    // Static methods for detection events (legacy - kept for backward compatibility)
     public static void AddDetectionEvent(string patientId, string patientName, string location)
     {
         _detectionEvents.Add(new DetectionEventMemory
