@@ -129,6 +129,40 @@ public class RecordDetectionRequest
     public string? Note { get; set; }
 }
 
+/// Request đăng ký khuôn mặt từ AI Server
+public class RegisterFaceRequest
+{
+    /// <summary>
+    /// Mã y tế bệnh nhân (bắt buộc)
+    /// </summary>
+    public string MaYTe { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Ảnh dạng base64 (JPEG/PNG)
+    /// </summary>
+    public string? ImageBase64 { get; set; }
+    
+    /// <summary>
+    /// Content type của ảnh (image/jpeg, image/png)
+    /// </summary>
+    public string? ContentType { get; set; }
+    
+    /// <summary>
+    /// Vector embedding đã tính từ AI (512 floats cho Facenet512)
+    /// </summary>
+    public float[]? Embedding { get; set; }
+    
+    /// <summary>
+    /// Tên model sử dụng (Facenet512, VGGFace, etc.)
+    /// </summary>
+    public string? ModelName { get; set; }
+    
+    /// <summary>
+    /// Ghi chú
+    /// </summary>
+    public string? Note { get; set; }
+}
+
 /// Response khi lấy embeddings
 public class EmbeddingData
 {

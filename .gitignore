@@ -126,3 +126,8 @@ yarn-error.log*
 *.swp
 *.swo
 *~
+# Large model files
+AI/models/*.onnx
+AI/models/*.pt
+AI/*.pt
+*.onnx

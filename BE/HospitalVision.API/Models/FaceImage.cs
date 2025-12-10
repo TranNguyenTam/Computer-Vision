@@ -56,10 +56,12 @@ public class FaceImage
     [StringLength(50)]
     public string MaYTe { get; set; } = string.Empty;
     
-    [Required]
     [Column("IMAGE_PATH")]
     [StringLength(500)]
-    public string ImagePath { get; set; } = string.Empty;
+    public string? ImagePath { get; set; }
+    
+    // NOTE: Không lưu ảnh gốc để tiết kiệm dung lượng
+    // Chỉ lưu embedding vector để nhận diện
     
     [Column("EMBEDDING")]
     public byte[]? Embedding { get; set; }
@@ -185,16 +187,7 @@ public class PatientBasicInfo
     public string? NguoiCapNhatId { get; set; }
 }
 
-/// Request để đăng ký face
-public class RegisterFaceRequest
-{
-    [Required]
-    public string MaYTe { get; set; } = string.Empty;
-    
-    /// Base64 encoded image hoặc IFormFile
-    public string? ImageBase64 { get; set; }
-}
-
+// NOTE: RegisterFaceRequest is defined in DTOs.cs
 
 /// Response khi nhận diện thành công
 

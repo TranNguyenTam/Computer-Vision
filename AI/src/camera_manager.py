@@ -135,16 +135,24 @@ class HikvisionCamera:
         )
         return url
     
-    def connect(self) -> bool:
+    def connect(self, force: bool = False) -> bool:
         """
         Connect to camera RTSP stream
+        
+        Args:
+            force: Force reconnect even if already connected
         
         Returns:
             True if connection successful
         """
-        if self.is_connected:
+        if self.is_connected and not force:
             logger.warning("Already connected")
             return True
+        
+        # If force reconnect, disconnect first
+        if force and self.is_connected:
+            logger.info("Force reconnect - disconnecting first...")
+            self._release_capture()
         
         rtsp_url = self.get_rtsp_url()
         logger.info(f"Connecting to camera: {self.config.ip}")
@@ -223,6 +231,21 @@ class HikvisionCamera:
             logger.error(f"❌ Connection error: {e}")
             self._handle_error(str(e))
             return False
+    
+    def _release_capture(self):
+        """Release video capture without full disconnect"""
+        self.is_connected = False
+        if self.cap:
+            try:
+                self.cap.release()
+            except:
+                pass
+            self.cap = None
+    
+    def reconnect(self) -> bool:
+        """Force reconnect to camera"""
+        logger.info("🔄 Reconnecting to camera...")
+        return self.connect(force=True)
     
     def disconnect(self):
         """Disconnect from camera"""

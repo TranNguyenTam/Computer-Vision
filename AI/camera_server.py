@@ -121,14 +121,14 @@ def initialize_camera():
     logger.info("✅ YOLOv8-Pose initialized")
     
     # Initialize Deep Learning Face Embedding
+    # NOTE: Faces are now stored in SQL Server, not local folder
     face_config = config.get('face_recognition', {})
-    face_config['database_path'] = str(Path(__file__).parent / "data" / "faces_db.pkl")
-    face_config['faces_folder'] = str(Path(__file__).parent / "data" / "faces")
+    face_config['database_path'] = str(Path(__file__).parent / "data" / "faces_db.pkl")  # Local cache only
     face_config['detection_interval'] = 5  # Process every 5 frames
     face_config['process_scale'] = 0.75  # Slightly lower resolution for speed
     face_config['threshold'] = 0.80  # Cosine similarity threshold (80% confidence minimum)
     
-    # Backend API configuration for auto-detection
+    # Backend API configuration - PRIMARY storage for faces
     face_config['backend_url'] = config.get('backend', {}).get('url', 'http://localhost:5000')
     face_config['auto_detection_enabled'] = True
     face_config['min_face_size'] = 160  # Minimum face width (px) for auto-detection (~1m distance)
@@ -140,7 +140,7 @@ def initialize_camera():
     else:
         face_recognizer = FastFaceRecognition(face_config)
     
-    logger.info(f"✅ Face Recognition initialized ({len(face_recognizer.registered_faces)} faces)")
+    logger.info(f"✅ Face Recognition initialized ({len(face_recognizer.registered_faces)} faces from SQL Server)")
     
     return True
     
@@ -164,16 +164,18 @@ def process_frames():
             
             # IMPORTANT: Flush buffer to get latest frame and reduce latency
             # Read multiple frames quickly to skip buffered old frames
-            for _ in range(2):  # Skip 2 buffered frames
-                camera.cap.grab()
+            if camera.cap:
+                for _ in range(2):  # Skip 2 buffered frames
+                    camera.cap.grab()
             
             ret, frame = camera.read()
             if not ret or frame is None:
                 error_count += 1
                 if error_count > max_errors:
                     logger.warning("Too many frame errors, attempting reconnect...")
-                    camera.connect()
+                    camera.reconnect()  # Use reconnect() instead of connect()
                     error_count = 0
+                    time.sleep(1)  # Wait a bit after reconnect
                 time.sleep(0.1)
                 continue
             
@@ -483,13 +485,12 @@ def get_face_image(person_id):
 @app.route('/api/faces/register', methods=['POST'])
 def register_face():
     """
-    Register a new face - supports multiple images per person
+    Register a new face - saves image and embedding to SQL Server
     Supports: JPG, PNG, HEIC/HEIF
     
     Form data:
         - person_id: Mã y tế MAYTE (required)
-        - person_name: Full name (required)
-        - person_type: 'patient' or 'staff' (default: 'patient')
+        - person_name: Full name (required for display)
         - image: Image file (optional, uses current camera frame if not provided)
     """
     if face_recognizer is None:
@@ -497,10 +498,9 @@ def register_face():
     
     person_id = request.form.get('person_id')
     person_name = request.form.get('person_name')
-    person_type = request.form.get('person_type', 'patient')
     
-    if not person_id or not person_name:
-        return jsonify({"error": "person_id and person_name are required"}), 400
+    if not person_id:
+        return jsonify({"error": "person_id (MAYTE) is required"}), 400
     
     # Get image from upload or current frame
     if 'image' in request.files:
@@ -530,20 +530,20 @@ def register_face():
                 return jsonify({"error": "No camera frame available"}), 503
             frame = current_frame.copy()
     
-    # Register face (supports adding multiple images per person)
-    logger.info(f"👤 Registering face for {person_id} ({person_name})")
-    success, message = face_recognizer.register_face(frame, person_id, person_name, person_type)
+    # Register face - saves to SQL Server via Backend API
+    logger.info(f"👤 Registering face for {person_id} ({person_name or 'N/A'})")
+    success, message = face_recognizer.register_face(person_id, frame, save_to_backend=True)
     logger.info(f"👤 Result: success={success}, message={message}")
     
     if success:
-        # Get updated face info
-        face_info = face_recognizer.get_face_info(person_id)
+        # Get updated face count
+        image_count = len(face_recognizer.registered_faces.get(person_id, []))
         return jsonify({
             "success": True,
             "message": message,
             "person_id": person_id,
             "person_name": person_name,
-            "image_count": face_info.get('image_count', 1) if face_info else 1
+            "image_count": image_count
         })
     else:
         return jsonify({"success": False, "error": message}), 400
@@ -552,12 +552,11 @@ def register_face():
 @app.route('/api/faces/register-from-camera', methods=['POST'])
 def register_from_camera():
     """
-    Register face from current camera view
+    Register face from current camera view - saves to SQL Server
     
     JSON body:
-        - person_id: Unique ID
-        - person_name: Full name
-        - person_type: 'patient' or 'staff'
+        - person_id: MAYTE (required)
+        - person_name: Full name (optional, for display)
     """
     if face_recognizer is None:
         return jsonify({"error": "Face recognition not initialized"}), 503
@@ -565,10 +564,9 @@ def register_from_camera():
     data = request.json or {}
     person_id = data.get('person_id')
     person_name = data.get('person_name')
-    person_type = data.get('person_type', 'patient')
     
-    if not person_id or not person_name:
-        return jsonify({"error": "person_id and person_name are required"}), 400
+    if not person_id:
+        return jsonify({"error": "person_id (MAYTE) is required"}), 400
     
     # Get current camera frame
     with frame_lock:
@@ -576,28 +574,20 @@ def register_from_camera():
             return jsonify({"error": "No camera frame available"}), 503
         frame = current_frame.copy()
     
-    # Register face - save image to folder and register
-    faces_folder = Path('data/faces') / person_id
-    faces_folder.mkdir(parents=True, exist_ok=True)
-    
-    # Save image with timestamp
-    import time
-    timestamp = int(time.time())
-    image_path = faces_folder / f"{person_id}_{timestamp}.jpg"
-    cv2.imwrite(str(image_path), frame)
-    
-    # Register face feature
-    success = face_recognizer.register_face(person_id, frame)
+    # Register face - saves to SQL Server via Backend API
+    success, message = face_recognizer.register_face(person_id, frame, save_to_backend=True)
     
     if success:
+        image_count = len(face_recognizer.registered_faces.get(person_id, []))
         return jsonify({
             "success": True,
-            "message": f"Face registered successfully for {person_name}",
+            "message": message,
             "person_id": person_id,
-            "person_name": person_name
+            "person_name": person_name,
+            "image_count": image_count
         })
     else:
-        return jsonify({"success": False, "error": "Could not detect face in frame"}), 400
+        return jsonify({"success": False, "error": message}), 400
 
 
 @app.route('/api/faces/<person_id>', methods=['DELETE'])

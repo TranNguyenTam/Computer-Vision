@@ -457,7 +457,6 @@ public class FaceController : ControllerBase
                     IsActive = f.IsActive
                 })
                 .ToListAsync();
-
             return Ok(images);
         }
         catch (Exception ex)

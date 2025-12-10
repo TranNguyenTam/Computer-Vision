@@ -9,6 +9,7 @@ import pickle
 import logging
 import urllib.request
 import requests
+import base64
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Set
 from datetime import datetime, date
@@ -47,7 +48,7 @@ class FaceEmbedding:
     def __init__(self, config: Dict = None):
         self.config = config or {}
         self.database_path = self.config.get('database_path', 'data/face_embeddings.pkl')
-        self.faces_folder = self.config.get('faces_folder', 'data/faces')
+        # NOTE: faces_folder deprecated - faces are now stored in SQL Server
         self.model_dir = Path(self.config.get('model_dir', 'models'))
         self.detection_interval = self.config.get('detection_interval', 3)
         self.process_scale = self.config.get('process_scale', 0.5)
@@ -295,27 +296,26 @@ class FaceEmbedding:
         return float(dot / (norm_a * norm_b))
     
     def _load_database(self):
-        """Load face database from file"""
-        if os.path.exists(self.database_path):
-            try:
-                with open(self.database_path, 'rb') as f:
-                    self.registered_faces = pickle.load(f)
-                logger.info(f"✅ Loaded {len(self.registered_faces)} faces from database")
-            except Exception as e:
-                logger.warning(f"Failed to load database: {e}")
-                self.registered_faces = {}
+        """Load face database - PRIMARY from SQL Server via Backend API"""
+        # First, try to load from Backend API (SQL Server) - PRIMARY SOURCE
+        backend_loaded = self._load_from_backend()
         
-        # Also load from faces folder if exists
-        self._load_from_folder()
-        
-        # Try to load from Backend API
-        self._load_from_backend()
+        if not backend_loaded:
+            # Fallback: load from local pickle file (cache)
+            if os.path.exists(self.database_path):
+                try:
+                    with open(self.database_path, 'rb') as f:
+                        self.registered_faces = pickle.load(f)
+                    logger.info(f"✅ Loaded {len(self.registered_faces)} faces from local cache")
+                except Exception as e:
+                    logger.warning(f"Failed to load local cache: {e}")
+                    self.registered_faces = {}
         
         # Load today's detections from backend
         self._load_detected_today()
     
-    def _load_from_backend(self):
-        """Load embeddings from Backend API (SQL Server)"""
+    def _load_from_backend(self) -> bool:
+        """Load embeddings from Backend API (SQL Server) - PRIMARY SOURCE"""
         try:
             response = requests.get(
                 f"{self.backend_url}/api/face/embeddings",
@@ -325,7 +325,10 @@ class FaceEmbedding:
             if response.status_code == 200:
                 data = response.json()
                 if data.get('success') and data.get('data'):
+                    # Clear existing and load fresh from SQL Server
+                    self.registered_faces = {}
                     count = 0
+                    
                     for item in data['data']:
                         mayte = item.get('maYTe')
                         embeddings_list = item.get('embeddings', [])
@@ -344,19 +347,23 @@ class FaceEmbedding:
                                 person_embeddings.append(embedding)
                         
                         if person_embeddings:
-                            # Merge with existing (from folder)
-                            if mayte in self.registered_faces:
-                                self.registered_faces[mayte].extend(person_embeddings)
-                            else:
-                                self.registered_faces[mayte] = person_embeddings
+                            self.registered_faces[mayte] = person_embeddings
                             count += 1
                     
-                    logger.info(f"✅ Loaded {count} faces from Backend API")
+                    logger.info(f"✅ Loaded {count} patients from SQL Server (Backend API)")
+                    
+                    # Save to local cache for offline fallback
+                    self._save_database()
+                    return True
                     
         except requests.exceptions.ConnectionError:
-            logger.warning("Backend API not available, using local database only")
+            logger.warning("⚠️ Backend API not available, will use local cache")
+            return False
         except Exception as e:
             logger.warning(f"Failed to load from backend: {e}")
+            return False
+        
+        return False
     
     def _load_detected_today(self):
         """Load list of people already detected today from Backend"""
@@ -380,80 +387,13 @@ class FaceEmbedding:
         except Exception as e:
             logger.debug(f"Could not load today's detections: {e}")
     
-    def _load_from_folder(self):
-        """Load faces from folder structure: faces_folder/person_id/*.jpg"""
-        if not os.path.exists(self.faces_folder):
-            return
-        
-        try:
-            # Support HEIC images
-            try:
-                from pillow_heif import register_heif_opener
-                register_heif_opener()
-                heic_supported = True
-            except:
-                heic_supported = False
-            
-            from PIL import Image
-        except:
-            logger.warning("PIL not available for image loading")
-            return
-        
-        for person_id in os.listdir(self.faces_folder):
-            person_dir = os.path.join(self.faces_folder, person_id)
-            if not os.path.isdir(person_dir):
-                continue
-            
-            if person_id in self.registered_faces and len(self.registered_faces[person_id]) > 0:
-                # Already loaded
-                continue
-            
-            embeddings = []
-            supported_ext = ['.jpg', '.jpeg', '.png', '.bmp']
-            if heic_supported:
-                supported_ext.extend(['.heic', '.heif'])
-            
-            for img_file in os.listdir(person_dir):
-                if not any(img_file.lower().endswith(ext) for ext in supported_ext):
-                    continue
-                
-                img_path = os.path.join(person_dir, img_file)
-                try:
-                    # Load image (handles HEIC via PIL)
-                    if img_file.lower().endswith(('.heic', '.heif')):
-                        pil_img = Image.open(img_path).convert('RGB')
-                        img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
-                    else:
-                        img = cv2.imread(img_path)
-                    
-                    if img is None:
-                        continue
-                    
-                    # Detect face in image
-                    faces = self._detect_faces(img)
-                    if faces:
-                        x, y, w, h = faces[0]  # Use first face
-                        face_img = img[y:y+h, x:x+w]
-                        
-                        # Extract embedding
-                        emb = self._extract_embedding(face_img)
-                        if emb is not None:
-                            embeddings.append(emb)
-                    else:
-                        # No face detected, use whole image
-                        emb = self._extract_embedding(img)
-                        if emb is not None:
-                            embeddings.append(emb)
-                            
-                except Exception as e:
-                    logger.warning(f"Failed to load {img_path}: {e}")
-            
-            if embeddings:
-                self.registered_faces[person_id] = embeddings
-                logger.info(f"📷 Loaded {len(embeddings)} face(s) for person {person_id}")
-        
-        # Save updated database
-        self._save_database()
+    # DEPRECATED: No longer used - faces are now stored in SQL Server
+    # Keeping for reference only
+    def _load_from_folder_deprecated(self):
+        """[DEPRECATED] Load faces from folder structure - NOT USED ANYMORE
+        Faces are now stored in SQL Server via Backend API.
+        This method is kept for reference only."""
+        pass
     
     def _save_database(self):
         """Save face database to file"""
@@ -555,33 +495,77 @@ class FaceEmbedding:
         return None, best_similarity
     
     def register_face(self, person_id: str, face_img: np.ndarray, 
-                       save_to_backend: bool = True) -> bool:
+                       save_to_backend: bool = True) -> Tuple[bool, str]:
         """Register a new face for a person
         
         Args:
             person_id: Patient ID (MAYTE)
             face_img: Face image (BGR)
-            save_to_backend: If True, also save embedding to Backend API
+            save_to_backend: If True, also save image and embedding to Backend API (SQL Server)
+            
+        Returns:
+            Tuple of (success: bool, message: str)
         """
         try:
+            # Extract embedding
             embedding = self._extract_embedding(face_img)
             if embedding is None:
-                return False
+                return False, "Không thể trích xuất đặc trưng khuôn mặt"
             
+            # Add to local cache (memory)
             if person_id not in self.registered_faces:
                 self.registered_faces[person_id] = []
             
             self.registered_faces[person_id].append(embedding)
-            self._save_database()
+            self._save_database()  # Save to local pickle (cache)
             
-            # Also save to backend
+            # Save to Backend API (SQL Server) - PRIMARY STORAGE
             if save_to_backend:
-                self.save_embedding_to_backend(person_id, embedding)
+                success = self._register_face_to_backend(person_id, face_img, embedding)
+                if success:
+                    logger.info(f"✅ Registered face for {person_id} to SQL Server")
+                    return True, f"Đã đăng ký khuôn mặt cho bệnh nhân {person_id}"
+                else:
+                    logger.warning(f"⚠️ Saved locally but failed to save to SQL Server")
+                    return True, "Đã lưu cục bộ, nhưng không lưu được vào SQL Server"
             
-            logger.info(f"✅ Registered face for person {person_id}")
-            return True
+            logger.info(f"✅ Registered face for person {person_id} (local only)")
+            return True, f"Đã đăng ký khuôn mặt cho {person_id}"
         except Exception as e:
             logger.error(f"Failed to register face: {e}")
+            return False, f"Lỗi: {str(e)}"
+    
+    def _register_face_to_backend(self, person_id: str, face_img: np.ndarray, 
+                                   embedding: np.ndarray) -> bool:
+        """Register face embedding to Backend API (SQL Server)
+        NOTE: Chỉ lưu embedding, không lưu ảnh gốc để tiết kiệm dung lượng
+        """
+        try:
+            # Call Backend API - chỉ gửi embedding, không gửi ảnh
+            response = requests.post(
+                f"{self.backend_url}/api/face/register",
+                json={
+                    'maYTe': person_id,
+                    'embedding': embedding.tolist(),
+                    'modelName': 'Facenet512'
+                },
+                timeout=15
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('success'):
+                    logger.info(f"✅ Saved embedding to SQL Server: {person_id}, imageId: {data.get('imageId')}")
+                    return True
+                else:
+                    logger.warning(f"Backend error: {data.get('message')}")
+            else:
+                logger.warning(f"Backend returned {response.status_code}: {response.text}")
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"Failed to register face to backend: {e}")
             return False
     
     def identify_faces(self, frame: np.ndarray, auto_record: bool = False) -> List[Dict]:
@@ -824,29 +808,19 @@ class FaceEmbedding:
         return result
     
     def remove_person(self, person_id: str) -> bool:
-        """Remove a person from the database, backend, and local folder"""
+        """Remove a person from database (SQL Server + local cache)"""
         removed = False
         
         # 1. Remove from memory (registered_faces dictionary)
         if person_id in self.registered_faces:
             del self.registered_faces[person_id]
             self._save_database()
-            logger.info(f"🗑️ Removed person {person_id} from local database")
+            logger.info(f"🗑️ Removed person {person_id} from local cache")
             removed = True
         
-        # 2. Delete folder in data/faces/{person_id}
-        person_folder = os.path.join(self.faces_folder, person_id)
-        if os.path.exists(person_folder):
-            try:
-                import shutil
-                shutil.rmtree(person_folder)
-                logger.info(f"🗑️ Deleted folder {person_folder}")
-                removed = True
-            except Exception as e:
-                logger.warning(f"Failed to delete folder {person_folder}: {e}")
-        
-        # 3. Delete from Backend API (SQL Server)
+        # 2. Delete from Backend API (SQL Server) - PRIMARY
         if self._delete_from_backend(person_id):
+            logger.info(f"🗑️ Deleted {person_id} from SQL Server")
             removed = True
         
         return removed
