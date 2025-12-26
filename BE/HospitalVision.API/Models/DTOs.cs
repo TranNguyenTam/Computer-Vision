@@ -81,18 +81,8 @@ public class DashboardStatsDto
     public int TodayAppointments { get; set; }
     public int ActiveAlerts { get; set; }
     public int PatientsDetectedToday { get; set; }
-    public List<RecentAlertDto> RecentAlerts { get; set; } = new();
+    public List<FallAlertResponse> RecentAlerts { get; set; } = new();
     public List<RecentDetectionDto> RecentDetections { get; set; } = new();
-}
-
-/// Recent alert DTO for dashboard
-public class RecentAlertDto
-{
-    public int Id { get; set; }
-    public string? PatientName { get; set; }
-    public DateTime Timestamp { get; set; }
-    public string? Location { get; set; }
-    public string Status { get; set; } = string.Empty;
 }
 
 /// Recent detection DTO for dashboard
@@ -175,4 +165,177 @@ public class EmbeddingVector
     public int EmbeddingSize { get; set; }
     public string? ModelName { get; set; }
     public float[]? Vector { get; set; }
+}
+
+// =====================================================
+// DTOs cho Face Service - Clean Architecture
+// =====================================================
+
+/// Face registration DTO
+public class FaceRegistrationDto
+{
+    public string MaYTe { get; set; } = string.Empty;
+    public string PersonName { get; set; } = string.Empty;
+    public int ImageCount { get; set; }
+}
+
+/// Face detection DTO
+public class FaceDetectionDto
+{
+    public int Id { get; set; }
+    public string MaYTe { get; set; } = string.Empty;
+    public string PatientName { get; set; } = string.Empty;
+    public double Confidence { get; set; }
+    public DateTime? DetectedAt { get; set; }
+    public string? CameraId { get; set; }
+    public string? Location { get; set; }
+}
+
+/// Patient validation DTO
+public class PatientValidationDto
+{
+    public bool Success { get; set; }
+    public string Message { get; set; } = string.Empty;
+    public PatientBasicInfo? Patient { get; set; }
+}
+
+/// Patient basic info DTO
+public class PatientBasicInfo
+{
+    public int BenhNhanId { get; set; }
+    public string MaYTe { get; set; } = string.Empty;
+    public string TenBenhNhan { get; set; } = string.Empty;
+    public string? GioiTinh { get; set; }
+    public int? Tuoi { get; set; }
+    public string? NgaySinh { get; set; }
+    public string? SoDienThoai { get; set; }
+    public string? DiaChi { get; set; }
+    public string? NhomMau { get; set; }
+    public string? YeuToRh { get; set; }
+    public string? TienSuBenh { get; set; }
+    public string? HinhAnhDaiDien { get; set; }
+    public string? BHYT { get; set; }
+}
+
+/// Patient detail DTO with full information (used by FaceController)
+public class PatientDetailDto
+{
+    // Thông tin định danh
+    public int BenhNhanId { get; set; }
+    public string MaYTe { get; set; } = string.Empty;
+    public string? FID { get; set; }
+    public string? SoVaoVien { get; set; }
+    public string? PID { get; set; }
+    
+    // Thông tin cá nhân
+    public string TenBenhNhan { get; set; } = string.Empty;
+    public string? Ho { get; set; }
+    public string? Ten { get; set; }
+    public string? GioiTinh { get; set; }
+    public int? Tuoi { get; set; }
+    public string? NgaySinh { get; set; }
+    public string? NgayGioSinh { get; set; }
+    public string? NamSinh { get; set; }
+    public string? MaNoiSinh { get; set; }
+    
+    // Liên hệ
+    public string? SoDienThoai { get; set; }
+    public string? DienThoaiBan { get; set; }
+    public string? Email { get; set; }
+    
+    // Địa chỉ
+    public string? SoNha { get; set; }
+    public string? DiaChi { get; set; }
+    public string? DiaChiThuongTru { get; set; }
+    public string? DiaChiLienLac { get; set; }
+    public string? DiaChiCoQuan { get; set; }
+    public string? TinhThanhId { get; set; }
+    public string? QuanHuyenId { get; set; }
+    public string? XaPhuongId { get; set; }
+    public string? QuocTich { get; set; }
+    public string? DanToc { get; set; }
+    public string? TonGiao { get; set; }
+    public string? QuocGia { get; set; }
+    
+    // Giấy tờ tùy thân
+    public string? CMND { get; set; }
+    public string? HoChieu { get; set; }
+    
+    // Y tế
+    public string? NhomMau { get; set; }
+    public string? YeuToRh { get; set; }
+    public string? TienSuBenh { get; set; }
+    public string? TienSuGiaDinh { get; set; }
+    public string? TienSuDiUng { get; set; }
+    public string? TienSuHutThuocLa { get; set; }
+    public string? DiUng { get; set; }
+    public string? NhomDoiTuong { get; set; }
+    public string? DoiTuong { get; set; }
+    public string? LoaiDoiTuong { get; set; }
+    public string? LoaiBenhNhan { get; set; }
+    public string? TrangThai { get; set; }
+    public string? SoLuuTruNoiTru { get; set; }
+    public string? SoLuuTruNgoaiTru { get; set; }
+    
+    // BHYT
+    public string? BHYT { get; set; }
+    public string? SoTheBHYT { get; set; }
+    public string? MaDKBD { get; set; }
+    public string? MucHuong { get; set; }
+    public string? TuNgay { get; set; }
+    public string? DenNgay { get; set; }
+    
+    // Hình ảnh
+    public string? HinhAnhDaiDien { get; set; }
+    public string? UrlHinhAnh { get; set; }
+    
+    // Thông tin nội trú (nếu có)
+    public string? MaGiuong { get; set; }
+    public string? SoGiuong { get; set; }
+    public string? MaPhong { get; set; }
+    public string? TenPhong { get; set; }
+    public string? MaKhoa { get; set; }
+    public string? TenKhoa { get; set; }
+    public string? KhoaDieuTri { get; set; }
+    
+    // Người liên hệ
+    public string? NguoiLienHe { get; set; }
+    public string? NguoiLienHeTen { get; set; }
+    public string? NguoiLienHeSdt { get; set; }
+    public string? NguoiLienHeDiaChi { get; set; }
+    public string? NguoiLienHeQuanHe { get; set; }
+    public string? ThongTinNguoiLienHe { get; set; }
+    public string? MoiQuanHeId { get; set; }
+    
+    // Nghề nghiệp, học vấn
+    public string? NgheNghiep { get; set; }
+    public string? NgheNghiepId { get; set; }
+    public string? NoiLamViec { get; set; }
+    public string? ChucVu { get; set; }
+    public string? HocVan { get; set; }
+    public string? QuocTichId { get; set; }
+    public string? DanTocId { get; set; }
+    public string? TrinhDoVanHoaId { get; set; }
+    public string? TinhTrangHonNhanId { get; set; }
+    public bool? VietKieu { get; set; }
+    public bool? NguoiNuocNgoai { get; set; }
+    
+    // Tử vong
+    public bool? TuVong { get; set; }
+    public DateTime? NgayTuVong { get; set; }
+    public string? ThoiGianTuVong { get; set; }
+    public string? NguyenNhanTuVongId { get; set; }
+    
+    // Metadata
+    public string? CreatedAt { get; set; }
+    public string? CreatedBy { get; set; }
+    public string? Note { get; set; }
+    public string? GhiChu { get; set; }
+    public bool? Active { get; set; }
+    public int? BenhVienId { get; set; }
+    public int? SiteId { get; set; }
+    public DateTime? NgayTao { get; set; }
+    public DateTime? NgayCapNhat { get; set; }
+    public string? NguoiTaoId { get; set; }
+    public string? NguoiCapNhatId { get; set; }
 }

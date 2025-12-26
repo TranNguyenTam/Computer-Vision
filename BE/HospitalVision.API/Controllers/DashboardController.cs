@@ -1,5 +1,5 @@
 using HospitalVision.API.Models.DTOs;
-using HospitalVision.API.Services;
+using HospitalVision.API.Services.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
 namespace HospitalVision.API.Controllers;

@@ -1,13 +1,13 @@
 import {
-  Camera,
-  CheckCircle2,
-  Clock,
-  History,
-  Loader2,
-  Scan,
-  User,
-  UserCheck,
-  X
+    Camera,
+    CheckCircle2,
+    Clock,
+    History,
+    Loader2,
+    Scan,
+    User,
+    UserCheck,
+    X
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
@@ -63,7 +63,8 @@ const FaceIdentifyPage: React.FC = () => {
             body: JSON.stringify({
               face_recognition_enabled: true,
               fall_detection_enabled: false, // Hide fall boxes
-              auto_detection_enabled: true   // Enable auto-record
+              auto_detection_enabled: true,   // Enable auto-record
+              show_bounding_box: true         // Show face bounding box
             })
           });
         } else {
@@ -81,14 +82,15 @@ const FaceIdentifyPage: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // 2. Poll for detections
+  // 2. Poll for detections AND current face status
   useEffect(() => {
     const fetchDetections = async () => {
       try {
+        // Fetch detection history
         const res = await fetch(`${API_BASE_URL}/face/detections/today`);
         if (res.ok) {
           const data = await res.json();
-          if (data.success && data.data.length > 0) {
+          if (data.success && data.data && data.data.length > 0) {
             const sorted = data.data; // Backend sorts desc
             setRecentDetections(sorted);
             
@@ -96,8 +98,27 @@ const FaceIdentifyPage: React.FC = () => {
             // If new detection (different ID from current displayed), update
             if (!latestDetection || newest.id !== latestDetection.id) {
               setLatestDetection(newest);
-              fetchPatientInfo(newest.maYTe);
             }
+          }
+        }
+
+        // Check current detection status (realtime) - THIS IS KEY
+        const currentRes = await fetch(`${CAMERA_SERVER_URL}/api/faces/current-detection`);
+        if (currentRes.ok) {
+          const currentData = await currentRes.json();
+          
+          if (currentData.has_detection && currentData.persons.length > 0) {
+            // Face detected! Show patient info
+            const currentPerson = currentData.persons[0];
+            const currentMaYTe = currentPerson.id;
+            
+            // Only fetch if it's different from current displayed patient
+            if (!patientInfo || patientInfo.maYTe !== currentMaYTe) {
+              fetchPatientInfo(currentMaYTe);
+            }
+          } else {
+            // No face detected, clear patient info
+            setPatientInfo(null);
           }
         }
       } catch (e) {
@@ -105,9 +126,10 @@ const FaceIdentifyPage: React.FC = () => {
       }
     };
 
-    const interval = setInterval(fetchDetections, 2000); // Poll every 2s
+    fetchDetections(); // Run immediately on mount
+    const interval = setInterval(fetchDetections, 1000); // Poll every 1s for faster response
     return () => clearInterval(interval);
-  }, [latestDetection]);
+  }, [patientInfo]); // Depend on patientInfo to check current state
 
   const fetchPatientInfo = async (maYTe: string) => {
     setIsLoadingInfo(true);

@@ -1,14 +1,14 @@
 import {
-  AlertCircle,
-  AlertTriangle,
-  CheckCircle,
-  Clock,
-  Image,
-  MapPin,
-  RefreshCw,
-  User,
-  Video,
-  XCircle
+    AlertCircle,
+    AlertTriangle,
+    CheckCircle,
+    Clock,
+    Image,
+    MapPin,
+    RefreshCw,
+    User,
+    Video,
+    XCircle
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { alertApi } from '../services/api';
@@ -53,6 +53,26 @@ const FallDetectionPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  // Configure AI settings on mount - Enable Fall Detection, Disable Face Recognition
+  useEffect(() => {
+    const configureAI = async () => {
+      try {
+        await fetch(`${AI_SERVER_URL}/api/settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fall_detection_enabled: true,
+            face_recognition_enabled: false,
+            show_bounding_box: true
+          })
+        });
+      } catch (e) {
+        console.error('Failed to configure AI settings:', e);
+      }
+    };
+    configureAI();
   }, []);
 
   useEffect(() => {

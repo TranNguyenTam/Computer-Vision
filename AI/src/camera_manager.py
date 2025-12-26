@@ -24,17 +24,17 @@ class CameraConfig:
     password: str = "test@2025"
     channel: int = 1
     stream: int = 1  # 1 = Main stream, 2 = Sub stream
-    width: int = 2560
-    height: int = 1440
+    width: int = 1920
+    height: int = 1080
     fps: int = 25
-    process_width: int = 1280   # Resize for AI processing
-    process_height: int = 720
+    process_width: int = 960    # Resize for AI processing
+    process_height: int = 540
     reconnect_delay: int = 3
     max_reconnect_attempts: int = 15
-    buffer_size: int = 1        # Reduce latency
+    buffer_size: int = 0        # Zero buffer for real-time
     connection_timeout: int = 10
     read_timeout: int = 5
-    transport: str = "tcp"      # tcp or udp
+    transport: str = "udp"      # UDP for lower latency
     use_hw_accel: bool = False  # Hardware acceleration
     hw_decoder: str = "cuda"    # cuda, dxva2, d3d11va
 

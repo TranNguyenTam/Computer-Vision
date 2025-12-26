@@ -1,7 +1,6 @@
-using HospitalVision.API.Data;
 using HospitalVision.API.Models;
+using HospitalVision.API.Services.Interfaces;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace HospitalVision.API.Controllers;
 
@@ -9,12 +8,12 @@ namespace HospitalVision.API.Controllers;
 [Route("api/[controller]")]
 public class BenhNhanController : ControllerBase
 {
-    private readonly HospitalDbContext _context;
+    private readonly IPatientService _patientService;
     private readonly ILogger<BenhNhanController> _logger;
 
-    public BenhNhanController(HospitalDbContext context, ILogger<BenhNhanController> logger)
+    public BenhNhanController(IPatientService patientService, ILogger<BenhNhanController> logger)
     {
-        _context = context;
+        _patientService = patientService;
         _logger = logger;
     }
 
@@ -29,26 +28,8 @@ public class BenhNhanController : ControllerBase
             if (count < 1) count = 50;
             if (count > 100) count = 100; // Max 100 per request
 
-            var totalCount = await _context.BenhNhans.CountAsync();
-            var totalPages = (int)Math.Ceiling((double)totalCount / count);
-
-            var benhNhans = await _context.BenhNhans
-                .OrderBy(b => b.BenhNhanId)
-                .Skip((page - 1) * count)
-                .Take(count)
-                .ToListAsync();
-
-            return Ok(new
-            {
-                data = benhNhans,
-                pagination = new
-                {
-                    page,
-                    pageSize = count,
-                    totalItems = totalCount,
-                    totalPages
-                }
-            });
+            var result = await _patientService.GetPatientsWithPaginationAsync(page, count);
+            return Ok(result);
         }
         catch (Exception ex)
         {
@@ -63,8 +44,7 @@ public class BenhNhanController : ControllerBase
     {
         try
         {
-            var benhNhan = await _context.BenhNhans
-                .FirstOrDefaultAsync(b => b.BenhNhanId == id);
+            var benhNhan = await _patientService.GetPatientByIdAsync(id);
             
             if (benhNhan == null)
             {
@@ -86,18 +66,12 @@ public class BenhNhanController : ControllerBase
     {
         try
         {
-            var query = _context.BenhNhans.AsQueryable();
-            
-            if (!string.IsNullOrWhiteSpace(q))
+            if (string.IsNullOrWhiteSpace(q))
             {
-                query = query.Where(b => 
-                    (b.TenBenhNhan != null && b.TenBenhNhan.Contains(q)) ||
-                    (b.MaYTe != null && b.MaYTe.Contains(q)) ||
-                    (b.SoDienThoai != null && b.SoDienThoai.Contains(q))
-                );
+                return Ok(new List<BenhNhan>());
             }
-            
-            var results = await query.Take(50).ToListAsync();
+
+            var results = await _patientService.SearchPatientsAsync(q, maxResults: 50);
             return Ok(results);
         }
         catch (Exception ex)
@@ -108,68 +82,68 @@ public class BenhNhanController : ControllerBase
     }
 
     /// Test kết nối database
-    [HttpGet("test-connection")]
-    public async Task<ActionResult> TestConnection()
-    {
-        try
-        {
-            var canConnect = await _context.Database.CanConnectAsync();
-            if (canConnect)
-            {
-                return Ok(new 
-                { 
-                    status = "success", 
-                    message = "Kết nối database thành công!"
-                });
-            }
-            return StatusCode(500, new { status = "failed", message = "Không thể kết nối database" });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Lỗi kết nối database");
-            return StatusCode(500, new { status = "error", message = ex.Message });
-        }
-    }
+    // [HttpGet("test-connection")]
+    // public async Task<ActionResult> TestConnection()
+    // {
+    //     try
+    //     {
+    //         var canConnect = await _context.Database.CanConnectAsync();
+    //         if (canConnect)
+    //         {
+    //             return Ok(new 
+    //             { 
+    //                 status = "success", 
+    //                 message = "Kết nối database thành công!"
+    //             });
+    //         }
+    //         return StatusCode(500, new { status = "failed", message = "Không thể kết nối database" });
+    //     }
+    //     catch (Exception ex)
+    //     {
+    //         _logger.LogError(ex, "Lỗi kết nối database");
+    //         return StatusCode(500, new { status = "error", message = ex.Message });
+    //     }
+    // }
 
-    /// Lấy cấu trúc bảng TT_BENHNHAN
-    [HttpGet("schema")]
-    public async Task<ActionResult> GetTableSchema()
-    {
-        try
-        {
-            var sql = @"
-                SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, CHARACTER_MAXIMUM_LENGTH
-                FROM INFORMATION_SCHEMA.COLUMNS 
-                WHERE TABLE_NAME = 'TT_BENHNHAN'
-                ORDER BY ORDINAL_POSITION";
+    // /// Lấy cấu trúc bảng TT_BENHNHAN
+    // [HttpGet("schema")]
+    // public async Task<ActionResult> GetTableSchema()
+    // {
+    //     try
+    //     {
+    //         var sql = @"
+    //             SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, CHARACTER_MAXIMUM_LENGTH
+    //             FROM INFORMATION_SCHEMA.COLUMNS 
+    //             WHERE TABLE_NAME = 'TT_BENHNHAN'
+    //             ORDER BY ORDINAL_POSITION";
             
-            var columns = new List<object>();
-            using (var command = _context.Database.GetDbConnection().CreateCommand())
-            {
-                command.CommandText = sql;
-                await _context.Database.OpenConnectionAsync();
+    //         var columns = new List<object>();
+    //         using (var command = _context.Database.GetDbConnection().CreateCommand())
+    //         {
+    //             command.CommandText = sql;
+    //             await _context.Database.OpenConnectionAsync();
                 
-                using (var reader = await command.ExecuteReaderAsync())
-                {
-                    while (await reader.ReadAsync())
-                    {
-                        columns.Add(new
-                        {
-                            ColumnName = reader["COLUMN_NAME"]?.ToString(),
-                            DataType = reader["DATA_TYPE"]?.ToString(),
-                            IsNullable = reader["IS_NULLABLE"]?.ToString(),
-                            MaxLength = reader["CHARACTER_MAXIMUM_LENGTH"]
-                        });
-                    }
-                }
-            }
+    //             using (var reader = await command.ExecuteReaderAsync())
+    //             {
+    //                 while (await reader.ReadAsync())
+    //                 {
+    //                     columns.Add(new
+    //                     {
+    //                         ColumnName = reader["COLUMN_NAME"]?.ToString(),
+    //                         DataType = reader["DATA_TYPE"]?.ToString(),
+    //                         IsNullable = reader["IS_NULLABLE"]?.ToString(),
+    //                         MaxLength = reader["CHARACTER_MAXIMUM_LENGTH"]
+    //                     });
+    //                 }
+    //             }
+    //         }
             
-            return Ok(new { tableName = "TT_BENHNHAN", columns });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Lỗi khi lấy schema bảng");
-            return StatusCode(500, new { error = ex.Message });
-        }
-    }
+    //         return Ok(new { tableName = "TT_BENHNHAN", columns });
+    //     }
+    //     catch (Exception ex)
+    //     {
+    //         _logger.LogError(ex, "Lỗi khi lấy schema bảng");
+    //         return StatusCode(500, new { error = ex.Message });
+    //     }
+    // }
 }

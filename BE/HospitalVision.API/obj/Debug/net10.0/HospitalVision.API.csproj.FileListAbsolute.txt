@@ -1,3 +1,12 @@
+D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\HospitalVision.API.csproj.AssemblyReference.cache
+D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\rpswa.dswa.cache.json
+D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\HospitalVision.API.GeneratedMSBuildEditorConfig.editorconfig
+D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\HospitalVision.API.AssemblyInfoInputs.cache
+D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\HospitalVision.API.AssemblyInfo.cs
+D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\HospitalVision.API.csproj.CoreCompileInputs.cache
+D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\HospitalVision.API.MvcApplicationPartsAssemblyInfo.cs
+D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\HospitalVision.API.MvcApplicationPartsAssemblyInfo.cache
+D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\HospitalVision.API.sourcelink.json
 D:\Intern\Computer Vision\BE\HospitalVision.API\bin\Debug\net10.0\appsettings.Development.json
 D:\Intern\Computer Vision\BE\HospitalVision.API\bin\Debug\net10.0\appsettings.json
 D:\Intern\Computer Vision\BE\HospitalVision.API\bin\Debug\net10.0\HospitalVision.API.staticwebassets.endpoints.json
@@ -147,14 +156,6 @@ D:\Intern\Computer Vision\BE\HospitalVision.API\bin\Debug\net10.0\runtimes\win-a
 D:\Intern\Computer Vision\BE\HospitalVision.API\bin\Debug\net10.0\runtimes\win-x64\native\Microsoft.Data.SqlClient.SNI.dll
 D:\Intern\Computer Vision\BE\HospitalVision.API\bin\Debug\net10.0\runtimes\win-x86\native\Microsoft.Data.SqlClient.SNI.dll
 D:\Intern\Computer Vision\BE\HospitalVision.API\bin\Debug\net10.0\runtimes\win\lib\net9.0\System.Windows.Extensions.dll
-D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\HospitalVision.API.csproj.AssemblyReference.cache
-D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\rpswa.dswa.cache.json
-D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\HospitalVision.API.GeneratedMSBuildEditorConfig.editorconfig
-D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\HospitalVision.API.AssemblyInfoInputs.cache
-D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\HospitalVision.API.AssemblyInfo.cs
-D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\HospitalVision.API.csproj.CoreCompileInputs.cache
-D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\HospitalVision.API.MvcApplicationPartsAssemblyInfo.cs
-D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\HospitalVision.API.MvcApplicationPartsAssemblyInfo.cache
 D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\rjimswa.dswa.cache.json
 D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\rjsmrazor.dswa.cache.json
 D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\rjsmcshtml.dswa.cache.json
@@ -170,4 +171,3 @@ D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\refint\Hospita
 D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\HospitalVision.API.pdb
 D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\HospitalVision.API.genruntimeconfig.cache
 D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\ref\HospitalVision.API.dll
-D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\HospitalVision.API.sourcelink.json

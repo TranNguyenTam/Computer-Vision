@@ -47,9 +47,10 @@ frame_lock = threading.Lock()
 # AI settings
 ai_settings = {
     "ai_enabled": True,
-    "fall_detection_enabled": True,
-    "face_recognition_enabled": False,
+    "fall_detection_enabled": False,  # Tắt mặc định, bật khi vào trang Fall Detection
+    "face_recognition_enabled": False,  # Tắt mặc định, bật khi vào trang Face Recognition
     "auto_detection_enabled": True,  # Auto-record face detection to backend
+    "show_bounding_box": True,  # Hiển thị bounding box (tắt khi đăng ký mới)
 }
 
 # Stats
@@ -126,12 +127,12 @@ def initialize_camera():
     face_config['database_path'] = str(Path(__file__).parent / "data" / "faces_db.pkl")  # Local cache only
     face_config['detection_interval'] = 5  # Process every 5 frames
     face_config['process_scale'] = 0.75  # Slightly lower resolution for speed
-    face_config['threshold'] = 0.80  # Cosine similarity threshold (80% confidence minimum)
+    face_config['threshold'] = 0.75  # Facenet512 cosine similarity threshold (75% minimum)
     
     # Backend API configuration - PRIMARY storage for faces
     face_config['backend_url'] = config.get('backend', {}).get('url', 'http://localhost:5000')
     face_config['auto_detection_enabled'] = True
-    face_config['min_face_size'] = 160  # Minimum face width (px) for auto-detection (~1m distance)
+    face_config['min_face_size'] = 80  # Minimum face width (px) - lowered for ~2-3m distance
     face_config['camera_id'] = config.get('camera', {}).get('id', 'camera_01')
     face_config['location'] = config.get('camera', {}).get('location', 'Cổng chính')
     
@@ -182,8 +183,8 @@ def process_frames():
             error_count = 0  # Reset on success
             frame_count += 1
             
-            # Resize for processing
-            process_frame = cv2.resize(frame, (1280, 720))
+            # Resize for processing (960x540 = balance quality & speed)
+            process_frame = cv2.resize(frame, (960, 540))
             display_frame = process_frame.copy()
             
             # Lưu raw frame (không có AI overlay) cho trang đăng ký
@@ -244,7 +245,8 @@ def process_frames():
                 if ai_settings["face_recognition_enabled"] and face_recognizer:
                     # Enable auto_record for automatic detection logging
                     auto_record = ai_settings.get("auto_detection_enabled", True)
-                    face_result = face_recognizer.process_frame(display_frame, auto_record=auto_record)
+                    show_box = ai_settings.get("show_bounding_box", True)
+                    face_result = face_recognizer.process_frame(display_frame, auto_record=auto_record, show_bounding_box=show_box)
                     display_frame = face_result.get('annotated_frame', display_frame)
                     
                     # Update stats
@@ -262,6 +264,9 @@ def process_frames():
                             'timestamp': time.time(),
                             'persons': stats["recognized_persons"]
                         })
+                    else:
+                        # Clear recognized persons when no face detected
+                        stats["recognized_persons"] = []
             
             # Calculate FPS
             elapsed = time.time() - fps_start
@@ -300,18 +305,18 @@ def generate_mjpeg():
     while True:
         with frame_lock:
             if current_frame is None:
-                time.sleep(0.01)
+                time.sleep(0.005)
                 continue
             frame = current_frame.copy()
         
-        # Lower quality for faster transmission
-        _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+        # Better quality for clearer face recognition (65%)
+        _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 65])
         frame_bytes = buffer.tobytes()
         
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
         
-        time.sleep(0.016)  # ~60 FPS for smoother stream
+        time.sleep(0.033)  # ~30 FPS (enough for monitoring, saves bandwidth)
 
 
 def generate_raw_mjpeg():
@@ -319,18 +324,18 @@ def generate_raw_mjpeg():
     while True:
         with frame_lock:
             if raw_frame is None:
-                time.sleep(0.01)
+                time.sleep(0.005)
                 continue
             frame = raw_frame.copy()
         
         # Lower quality for faster transmission
-        _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+        _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 60])
         frame_bytes = buffer.tobytes()
         
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
         
-        time.sleep(0.016)  # ~60 FPS for smoother stream
+        time.sleep(0.033)  # ~30 FPS (enough for registration)
 
 
 # ============== API Routes ==============
@@ -381,6 +386,8 @@ def update_settings():
         ai_settings['face_recognition_enabled'] = data['face_recognition_enabled']
     if 'auto_detection_enabled' in data:
         ai_settings['auto_detection_enabled'] = data['auto_detection_enabled']
+    if 'show_bounding_box' in data:
+        ai_settings['show_bounding_box'] = data['show_bounding_box']
     
     logger.info(f"Settings updated: {ai_settings}")
     return jsonify(ai_settings)
@@ -433,6 +440,16 @@ def reset_detections():
 
 
 # ============== Face Recognition API ==============
+
+@app.route('/api/faces/current-detection')
+def current_detection():
+    """Get currently detected faces (realtime status)"""
+    return jsonify({
+        "has_detection": len(stats.get("recognized_persons", [])) > 0,
+        "persons": stats.get("recognized_persons", []),
+        "timestamp": time.time()
+    })
+
 
 @app.route('/api/faces', methods=['GET'])
 def list_faces():
@@ -530,9 +547,25 @@ def register_face():
                 return jsonify({"error": "No camera frame available"}), 503
             frame = current_frame.copy()
     
-    # Register face - saves to SQL Server via Backend API
+    # IMPORTANT: Detect and crop face from image first!
+    faces = face_recognizer._detect_faces(frame)
+    if not faces:
+        logger.warning(f"❌ No face detected in uploaded image for {person_id}")
+        return jsonify({
+            "success": False,
+            "error": "Không phát hiện khuôn mặt trong ảnh. Vui lòng chọn ảnh có khuôn mặt rõ ràng."
+        }), 400
+    
+    # Get the largest face (closest person)
+    faces = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)
+    x, y, w, h = faces[0]
+    face_crop = frame[y:y+h, x:x+w]
+    
+    logger.info(f"📸 Detected face for {person_id}: crop size {w}x{h} from image {frame.shape}")
+    
+    # Register face crop - saves to SQL Server via Backend API
     logger.info(f"👤 Registering face for {person_id} ({person_name or 'N/A'})")
-    success, message = face_recognizer.register_face(person_id, frame, save_to_backend=True)
+    success, message = face_recognizer.register_face(person_id, face_crop, save_to_backend=True, person_name=person_name)
     logger.info(f"👤 Result: success={success}, message={message}")
     
     if success:
@@ -568,23 +601,80 @@ def register_from_camera():
     if not person_id:
         return jsonify({"error": "person_id (MAYTE) is required"}), 400
     
-    # Get current camera frame
+    # Get RAW camera frame (without AI overlay/bounding boxes)
+    # IMPORTANT: Use raw_frame, NOT current_frame which has overlays!
     with frame_lock:
-        if current_frame is None:
+        if raw_frame is None:
             return jsonify({"error": "No camera frame available"}), 503
-        frame = current_frame.copy()
+        frame = raw_frame.copy()
     
-    # Register face - saves to SQL Server via Backend API
-    success, message = face_recognizer.register_face(person_id, frame, save_to_backend=True)
+    logger.info(f"📸 Register from camera: frame shape {frame.shape}")
+    
+    # IMPORTANT: Detect and crop face from frame first!
+    faces = face_recognizer._detect_faces(frame)
+    if not faces:
+        logger.warning(f"❌ No face detected for {person_id}")
+        return jsonify({"success": False, "error": "Không phát hiện khuôn mặt trong khung hình"}), 400
+    
+    # Get the largest face (closest person)
+    faces = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)
+    x, y, w, h = faces[0]
+    face_crop = frame[y:y+h, x:x+w]
+    
+    logger.info(f"📸 Registering face for {person_id}: crop size {w}x{h} from raw frame")
+    
+    # DEBUG: Save face crop for debugging
+    import os
+    debug_dir = os.path.join(os.path.dirname(__file__), 'debug_faces')
+    os.makedirs(debug_dir, exist_ok=True)
+    
+    # Save original frame and face crop
+    debug_frame_path = os.path.join(debug_dir, f'{person_id}_frame.jpg')
+    debug_face_path = os.path.join(debug_dir, f'{person_id}_face_crop.jpg')
+    cv2.imwrite(debug_frame_path, frame)
+    cv2.imwrite(debug_face_path, face_crop)
+    logger.info(f"🔍 DEBUG: Saved frame to {debug_frame_path}")
+    logger.info(f"🔍 DEBUG: Saved face crop to {debug_face_path}")
+    
+    # DEBUG: Extract embedding and log
+    debug_embedding = face_recognizer._extract_embedding(face_crop)
+    if debug_embedding is not None:
+        logger.info(f"🔍 DEBUG: Embedding extracted, first 5 values: {debug_embedding[:5]}")
+        
+        # Verify by reloading the saved image
+        face_reloaded = cv2.imread(debug_face_path)
+        emb_reloaded = face_recognizer._extract_embedding(face_reloaded)
+        if emb_reloaded is not None:
+            sim = face_recognizer._cosine_similarity(debug_embedding, emb_reloaded)
+            logger.info(f"🔍 DEBUG: Similarity (original vs reloaded): {sim*100:.2f}%")
+    
+    # Register face crop - saves to SQL Server via Backend API
+    success, message = face_recognizer.register_face(person_id, face_crop, save_to_backend=True, person_name=person_name)
     
     if success:
-        image_count = len(face_recognizer.registered_faces.get(person_id, []))
+        # DEBUG: Verify registration by comparing with stored embedding
+        if person_id in face_recognizer.registered_faces:
+            stored_data = face_recognizer.registered_faces[person_id]
+            if isinstance(stored_data, dict):
+                stored_embs = stored_data.get('embeddings', [])
+            else:
+                stored_embs = stored_data
+            if stored_embs:
+                import numpy as np
+                stored_emb = np.array(stored_embs[-1])  # Last registered
+                if debug_embedding is not None:
+                    sim_stored = face_recognizer._cosine_similarity(debug_embedding, stored_emb)
+                    logger.info(f"🔍 DEBUG: Similarity (extracted vs stored): {sim_stored*100:.2f}%")
+                    logger.info(f"🔍 DEBUG: Stored embedding first 5: {stored_emb[:5]}")
+        
+        image_count = len(face_recognizer.registered_faces.get(person_id, {}).get('embeddings', []) if isinstance(face_recognizer.registered_faces.get(person_id), dict) else face_recognizer.registered_faces.get(person_id, []))
         return jsonify({
             "success": True,
             "message": message,
             "person_id": person_id,
             "person_name": person_name,
-            "image_count": image_count
+            "image_count": image_count,
+            "debug_face_path": debug_face_path  # Return path for debugging
         })
     else:
         return jsonify({"success": False, "error": message}), 400

@@ -1,6 +1,6 @@
 using HospitalVision.API.Models;
 using HospitalVision.API.Models.DTOs;
-using HospitalVision.API.Services;
+using HospitalVision.API.Services.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
 namespace HospitalVision.API.Controllers;
@@ -73,8 +73,8 @@ public class PatientController : ControllerBase
             
             if (benhNhan != null)
             {
-                // Log detection event (in-memory)
-                PatientService.AddDetectionEvent(
+                // Log detection event
+                await _patientService.AddDetectionEventAsync(
                     request.PatientId,
                     benhNhan.TenBenhNhan ?? "Unknown",
                     request.Location ?? "Unknown");

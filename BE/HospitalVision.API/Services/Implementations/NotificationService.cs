@@ -1,16 +1,9 @@
 using HospitalVision.API.Hubs;
 using HospitalVision.API.Models.DTOs;
+using HospitalVision.API.Services.Interfaces;
 using Microsoft.AspNetCore.SignalR;
 
-namespace HospitalVision.API.Services;
-
-public interface INotificationService
-{
-    Task SendFallAlertAsync(FallAlertResponse alert);
-    Task SendPatientDetectedAsync(string patientId, string patientName, string? location);
-    Task SendAlertStatusUpdateAsync(int alertId, string newStatus);
-    Task BroadcastMessageAsync(string type, object data);
-}
+namespace HospitalVision.API.Services.Implementations;
 
 public class NotificationService : INotificationService
 {
@@ -92,5 +85,16 @@ public class NotificationService : INotificationService
             _logger.LogError(ex, "Failed to broadcast message: {Type}", type);
             throw;
         }
+    }
+
+    // Legacy methods for backwards compatibility
+    public Task NotifyFallDetectedAsync(object alertData)
+    {
+        return BroadcastMessageAsync("FallDetected", alertData);
+    }
+
+    public Task NotifyFaceRecognizedAsync(object recognitionData)
+    {
+        return BroadcastMessageAsync("FaceRecognized", recognitionData);
     }
 }

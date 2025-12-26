@@ -15,27 +15,27 @@ camera:
   # Stream selection:
   # 1 = Main stream: 2560x1440 (4MP), H.265+, best quality for recording
   # 2 = Sub stream: 704x576 (D1), faster processing, recommended for AI
-  stream: 1
+  stream: 1 # Main stream for better quality
 
-  # Native resolution của camera (4MP)
-  width: 2560
-  height: 1440
+  # Native resolution của camera
+  width: 1920
+  height: 1080
   fps: 25
 
   # Processing resolution (resize để AI xử lý nhanh hơn)
-  process_width: 1280
-  process_height: 720
+  process_width: 960
+  process_height: 540
 
   # Connection optimization
   reconnect_delay: 3
   max_reconnect_attempts: 15
-  buffer_size: 1 # Giảm latency, chỉ giữ 1 frame
+  buffer_size: 0 # ZERO buffer for real-time
   connection_timeout: 10 # Timeout kết nối (giây)
   read_timeout: 5 # Timeout đọc frame (giây)
 
   # RTSP Transport
   # tcp = ổn định hơn, udp = latency thấp hơn
-  transport: "tcp"
+  transport: "udp" # UDP for lower latency
 
   # Hardware acceleration (GTX 1650 4GB)
   use_hw_accel: true # ENABLED for NVIDIA GPU
@@ -57,12 +57,12 @@ face_recognition:
   enabled: true
   use_gpu: true # Enable GPU acceleration
   model: "cnn" # "cnn" for GPU (faster), "hog" for CPU
-  tolerance: 0.6 # Lower = more strict matching
+  tolerance: 0.6 # Similarity threshold for matching
   num_jitters: 1 # Higher = more accurate but slower
   encoding_model: "large" # "small" or "large"
-  min_face_size: 30 # Slightly larger for better accuracy
-  detection_interval: 3 # Process every 3 frames (faster with GPU)
-  process_scale: 0.75 # Higher resolution with GPU
+  min_face_size: 120 # Only detect close faces (performance optimization)
+  detection_interval: 10 # Process every 10 frames (performance optimization)
+  process_scale: 0.5 # Reduce resolution for faster processing
   batch_size: 4 # Process multiple faces at once
 
 # Fall Detection Settings (GPU Optimized for GTX 1650)

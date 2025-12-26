@@ -1,40 +1,26 @@
-using HospitalVision.API.Data;
-using HospitalVision.API.Hubs;
 using HospitalVision.API.Models;
 using HospitalVision.API.Models.DTOs;
-using Microsoft.AspNetCore.SignalR;
-using Microsoft.EntityFrameworkCore;
+using HospitalVision.API.Services.Interfaces;
 
-namespace HospitalVision.API.Services;
-
-public interface IAlertService
-{
-    Task<FallAlertResponse> CreateFallAlertAsync(FallAlertRequest request);
-    Task<FallAlertMemory?> GetAlertAsync(int alertId);
-    Task<List<FallAlertResponse>> GetActiveAlertsAsync();
-    Task<List<FallAlertResponse>> GetAllAlertsAsync(int page = 1, int pageSize = 20);
-    Task<bool> UpdateAlertStatusAsync(int alertId, UpdateAlertStatusRequest request);
-    Task<bool> AcknowledgeAlertAsync(int alertId, string acknowledgedBy);
-    Task<bool> ResolveAlertAsync(int alertId, string resolvedBy, string? notes);
-}
+namespace HospitalVision.API.Services.Implementations;
 
 public class AlertService : IAlertService
 {
-    private readonly HospitalDbContext _context;
+    private readonly IPatientService _patientService;
     private readonly INotificationService _notificationService;
     private readonly ILogger<AlertService> _logger;
     
     private static int _nextAlertId = 1;
     
-    // Use shared alerts from PatientService
-    private static List<FallAlertMemory> Alerts => PatientService.SharedAlerts;
-
+    // Shared static alerts list (temporary in-memory storage)
+    private static readonly List<FallAlertMemory> _alerts = new();
+    
     public AlertService(
-        HospitalDbContext context,
+        IPatientService patientService,
         INotificationService notificationService,
         ILogger<AlertService> logger)
     {
-        _context = context;
+        _patientService = patientService;
         _notificationService = notificationService;
         _logger = logger;
     }
@@ -47,7 +33,7 @@ public class AlertService : IAlertService
         string? patientName = null;
         if (!string.IsNullOrEmpty(request.PatientId) && int.TryParse(request.PatientId, out int benhNhanId))
         {
-            var benhNhan = await _context.BenhNhans.FindAsync(benhNhanId);
+            var benhNhan = await _patientService.GetBenhNhanAsync(benhNhanId);
             patientName = benhNhan?.TenBenhNhan;
         }
         
@@ -63,7 +49,7 @@ public class AlertService : IAlertService
             FrameData = request.FrameData
         };
 
-        Alerts.Add(alert);
+        _alerts.Add(alert);
 
         _logger.LogWarning("FALL ALERT created: ID={AlertId}, Patient={PatientId}, Location={Location}",
             alert.Id, alert.PatientId, alert.Location);
@@ -88,13 +74,13 @@ public class AlertService : IAlertService
 
     public Task<FallAlertMemory?> GetAlertAsync(int alertId)
     {
-        var alert = Alerts.FirstOrDefault(a => a.Id == alertId);
+        var alert = _alerts.FirstOrDefault(a => a.Id == alertId);
         return Task.FromResult(alert);
     }
 
     public Task<List<FallAlertResponse>> GetActiveAlertsAsync()
     {
-        var alerts = Alerts
+        var alerts = _alerts
             .Where(a => a.Status == "Active" || a.Status == "Acknowledged")
             .OrderByDescending(a => a.Timestamp)
             .Select(a => new FallAlertResponse
@@ -116,7 +102,7 @@ public class AlertService : IAlertService
 
     public Task<List<FallAlertResponse>> GetAllAlertsAsync(int page = 1, int pageSize = 20)
     {
-        var alerts = Alerts
+        var alerts = _alerts
             .OrderByDescending(a => a.Timestamp)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
@@ -139,7 +125,7 @@ public class AlertService : IAlertService
 
     public Task<bool> UpdateAlertStatusAsync(int alertId, UpdateAlertStatusRequest request)
     {
-        var alert = Alerts.FirstOrDefault(a => a.Id == alertId);
+        var alert = _alerts.FirstOrDefault(a => a.Id == alertId);
         if (alert == null)
             return Task.FromResult(false);
 
@@ -180,18 +166,3 @@ public class AlertService : IAlertService
     }
 }
 
-// Extended FallAlertMemory for full alert data
-public class FallAlertMemory
-{
-    public int Id { get; set; }
-    public string PatientId { get; set; } = "";
-    public string PatientName { get; set; } = "";
-    public DateTime Timestamp { get; set; }
-    public string Location { get; set; } = "";
-    public double Confidence { get; set; }
-    public string Status { get; set; } = "Active";
-    public string? FrameData { get; set; }
-    public string? Notes { get; set; }
-    public string? ResolvedBy { get; set; }
-    public DateTime? ResolvedAt { get; set; }
-}

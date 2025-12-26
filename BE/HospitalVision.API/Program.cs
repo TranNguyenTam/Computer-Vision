@@ -1,6 +1,10 @@
 using HospitalVision.API.Data;
+using HospitalVision.API.Data.UnitOfWork;
 using HospitalVision.API.Hubs;
-using HospitalVision.API.Services;
+using HospitalVision.API.Repositories.Implementations;
+using HospitalVision.API.Repositories.Interfaces;
+using HospitalVision.API.Services.Implementations;
+using HospitalVision.API.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -65,10 +69,23 @@ else
         options.UseInMemoryDatabase("QmsDb"));
 }
 
-// Add Services
+// ===== CLEAN ARCHITECTURE REGISTRATION =====
+
+// Register Unit of Work
+builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+
+// Register Repositories (if needed directly - usually accessed via UnitOfWork)
+builder.Services.AddScoped<IBenhNhanRepository, BenhNhanRepository>();
+builder.Services.AddScoped<IFaceImageRepository, FaceImageRepository>();
+builder.Services.AddScoped<IHangDoiPhongBanRepository, HangDoiPhongBanRepository>();
+
+// Register Services
 builder.Services.AddScoped<IPatientService, PatientService>();
+builder.Services.AddScoped<IFaceService, FaceService>();
 builder.Services.AddScoped<IAlertService, AlertService>();
 builder.Services.AddSingleton<INotificationService, NotificationService>();
+
+Console.WriteLine("✅ Clean Architecture registered: Repositories → UnitOfWork → Services → Controllers");
 
 var app = builder.Build();
 

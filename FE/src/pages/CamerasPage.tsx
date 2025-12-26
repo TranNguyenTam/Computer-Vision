@@ -1,13 +1,13 @@
 import {
-  Camera,
-  Maximize2,
-  RefreshCw,
-  Settings,
-  Video,
-  VideoOff,
-  Wifi,
-  WifiOff,
-  X
+    Camera,
+    Maximize2,
+    RefreshCw,
+    Settings,
+    Video,
+    VideoOff,
+    Wifi,
+    WifiOff,
+    X
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Camera as CameraType } from '../types';
@@ -44,6 +44,26 @@ const CamerasPage: React.FC = () => {
   const [selectedCamera, setSelectedCamera] = useState<CameraType | null>(null);
   const [fullscreenCamera, setFullscreenCamera] = useState<CameraType | null>(null);
   const [serverStatus, setServerStatus] = useState<'online' | 'offline' | 'loading'>('loading');
+
+  // Configure AI settings on mount - Turn OFF all AI for raw camera view
+  useEffect(() => {
+    const configureAI = async () => {
+      try {
+        await fetch(`${CAMERA_SERVER_URL}/api/settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            face_recognition_enabled: false,
+            fall_detection_enabled: false,
+            show_bounding_box: false
+          })
+        });
+      } catch (e) {
+        console.error('Failed to configure AI settings:', e);
+      }
+    };
+    configureAI();
+  }, []);
 
   // Check camera server status
   const checkServerStatus = useCallback(async () => {

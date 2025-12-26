@@ -16,6 +16,8 @@ import {
   X
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
+import { useSignalR } from '../hooks/useSignalR';
+import { DetectionEvent } from '../types';
 
 const CAMERA_SERVER_URL = 'http://localhost:8080';
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -88,6 +90,33 @@ const FaceRecognitionPage: React.FC = () => {
   const [patientSearch, setPatientSearch] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult>({ patients: [], loading: false });
   const [selectedPatient, setSelectedPatient] = useState<PatientInfo | null>(null);
+  
+  // Patient detail modal
+  const [showPatientDetail, setShowPatientDetail] = useState(false);
+  const [patientDetail, setPatientDetail] = useState<PatientInfo | null>(null);
+  const [loadingPatientDetail, setLoadingPatientDetail] = useState(false);
+
+  // SignalR for realtime updates
+  useSignalR({
+    onPatientDetected: useCallback((event: DetectionEvent) => {
+      // Add new detection to list in realtime
+      setDetectionsToday((prev) => {
+        const exists = prev.some(d => d.maYTe === event.patientId);
+        if (exists) return prev; // Already in list
+        
+        const newDetection: DetectionRecord = {
+          id: Date.now(),
+          maYTe: event.patientId,
+          patientName: event.patientName,
+          confidence: 0,
+          detectedAt: new Date().toISOString(),
+          location: event.location
+        };
+        
+        return [newDetection, ...prev];
+      });
+    }, [])
+  });
 
   // Fetch detections today
   const fetchDetectionsToday = useCallback(async () => {
@@ -96,12 +125,16 @@ const FaceRecognitionPage: React.FC = () => {
       const response = await fetch(`${API_BASE_URL}/face/detections/today`);
       if (response.ok) {
         const data = await response.json();
+        console.log('Detection API Response:', data); // DEBUG
         if (data.success) {
+          console.log('Detection data:', data.data); // DEBUG
           setDetectionsToday(data.data || []);
         }
+      } else {
+        console.error('Failed to fetch detections:', response.status);
       }
-    } catch {
-      // Ignore
+    } catch (error) {
+      console.error('Error fetching detections:', error);
     } finally {
       setLoadingDetections(false);
     }
@@ -155,6 +188,26 @@ const FaceRecognitionPage: React.FC = () => {
     return () => clearInterval(interval);
   }, [fetchFaces, fetchSettings, fetchDetectionsToday]);
 
+  // Configure AI settings on mount - Enable Face Recognition, Disable Fall Detection
+  useEffect(() => {
+    const configureAI = async () => {
+      try {
+        await fetch(`${CAMERA_SERVER_URL}/api/settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            face_recognition_enabled: true,
+            fall_detection_enabled: false,
+            show_bounding_box: true
+          })
+        });
+      } catch (e) {
+        console.error('Failed to configure AI settings:', e);
+      }
+    };
+    configureAI();
+  }, []);
+
   // Search patients from database
   const searchPatients = useCallback(async (query: string) => {
     if (query.length < 2) {
@@ -165,10 +218,10 @@ const FaceRecognitionPage: React.FC = () => {
     setSearchResults(prev => ({ ...prev, loading: true }));
     
     try {
-      const response = await fetch(`${API_BASE_URL}/face/search-patient?q=${encodeURIComponent(query)}`);
+      const response = await fetch(`${API_BASE_URL}/face/search-patient?term=${encodeURIComponent(query)}`);
       if (response.ok) {
-        const patients = await response.json();
-        setSearchResults({ patients, loading: false });
+        const data = await response.json();
+        setSearchResults({ patients: data.patients || [], loading: false });
       } else {
         setSearchResults({ patients: [], loading: false });
       }
@@ -197,6 +250,33 @@ const FaceRecognitionPage: React.FC = () => {
     });
     setPatientSearch('');
     setSearchResults({ patients: [], loading: false });
+  };
+
+  // Fetch patient detail by MaYTe
+  const fetchPatientDetail = async (maYTe: string) => {
+    setLoadingPatientDetail(true);
+    setShowPatientDetail(true);
+    setPatientDetail(null); // Reset previous data
+    try {
+      const response = await fetch(`${API_BASE_URL}/face/patient/${encodeURIComponent(maYTe)}`);
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Patient detail response:', data); // DEBUG
+        if (data.success && data.patient) {
+          setPatientDetail(data.patient);
+        } else {
+          setPatientDetail(null);
+        }
+      } else {
+        console.error('Failed to fetch patient detail:', response.status, response.statusText);
+        setPatientDetail(null);
+      }
+    } catch (error) {
+      console.error('Failed to fetch patient detail:', error);
+      setPatientDetail(null);
+    } finally {
+      setLoadingPatientDetail(false);
+    }
   };
 
   // Toggle face recognition
@@ -437,7 +517,11 @@ const FaceRecognitionPage: React.FC = () => {
           <div className="p-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {detectionsToday.slice(0, 9).map((detection) => (
-                <div key={detection.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+                <div 
+                  key={detection.id} 
+                  onClick={() => fetchPatientDetail(detection.maYTe)}
+                  className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors"
+                >
                   <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center">
                     <User className="w-5 h-5 text-emerald-600" />
                   </div>
@@ -789,6 +873,77 @@ const FaceRecognitionPage: React.FC = () => {
                   </>
                 )}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Patient Detail Modal */}
+      {showPatientDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowPatientDetail(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-2xl mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            {/* Modal header */}
+            <div className="flex items-center justify-between p-5 border-b border-slate-200">
+              <h3 className="text-lg font-semibold text-slate-800">Thông tin bệnh nhân</h3>
+              <button
+                onClick={() => setShowPatientDetail(false)}
+                className="p-1 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <div className="p-6">
+              {loadingPatientDetail ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
+                </div>
+              ) : patientDetail ? (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-4 pb-4 border-b border-slate-200">
+                    <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
+                      <User className="w-8 h-8 text-blue-600" />
+                    </div>
+                    <div>
+                      <h4 className="text-xl font-semibold text-slate-800">{patientDetail.tenBenhNhan}</h4>
+                      <p className="text-sm text-slate-500">MAYTE: {patientDetail.maYTe}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    {patientDetail.gioiTinh && (
+                      <div>
+                        <p className="text-sm text-slate-500">Giới tính</p>
+                        <p className="font-medium text-slate-800">{patientDetail.gioiTinh}</p>
+                      </div>
+                    )}
+                    {patientDetail.tuoi !== undefined && (
+                      <div>
+                        <p className="text-sm text-slate-500">Tuổi</p>
+                        <p className="font-medium text-slate-800">{patientDetail.tuoi} tuổi</p>
+                      </div>
+                    )}
+                    {patientDetail.soDienThoai && (
+                      <div>
+                        <p className="text-sm text-slate-500">Số điện thoại</p>
+                        <p className="font-medium text-slate-800">{patientDetail.soDienThoai}</p>
+                      </div>
+                    )}
+                    {patientDetail.diaChi && (
+                      <div className="col-span-2">
+                        <p className="text-sm text-slate-500">Địa chỉ</p>
+                        <p className="font-medium text-slate-800">{patientDetail.diaChi}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+                  <AlertCircle className="w-12 h-12 mb-4 opacity-50" />
+                  <p className="text-lg font-medium">Không tìm thấy thông tin bệnh nhân</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

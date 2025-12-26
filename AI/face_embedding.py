@@ -23,6 +23,52 @@ os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 logger = logging.getLogger(__name__)
 
 class FaceEmbedding:
+    def read_image(self, file_bytes):
+        """Decode image from bytes, supports JPG, PNG, HEIC (pyheif, pillow-heif, imageio)"""
+        import numpy as np
+        import cv2
+        # Try OpenCV
+        np_arr = np.frombuffer(file_bytes, np.uint8)
+        img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        if img is not None:
+            return img
+        # Try pyheif
+        try:
+            import pyheif
+            from PIL import Image
+            heif_file = pyheif.read_heif(file_bytes)
+            img = Image.frombytes(
+                heif_file.mode,
+                heif_file.size,
+                heif_file.data,
+                "raw"
+            )
+            return cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+        except Exception:
+            pass
+        # Try pillow-heif
+        try:
+            from PIL import Image
+            import pillow_heif
+            heif_file = pillow_heif.read_heif(file_bytes)
+            img = Image.frombytes(
+                heif_file.mode,
+                heif_file.size,
+                heif_file.data,
+                "raw"
+            )
+            return cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+        except Exception:
+            pass
+        # Try imageio
+        try:
+            import imageio
+            img = imageio.v3.imread(file_bytes, extension='.heic')
+            if img is not None:
+                return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        except Exception:
+            pass
+        return None
     """
     Deep Learning Face Recognition using DeepFace library.
     Uses Facenet512 for accurate 512-dimensional face embeddings.
@@ -222,27 +268,68 @@ class FaceEmbedding:
         try:
             if self.deepface_available:
                 from deepface import DeepFace
+                import tempfile
+                import os
                 
-                # DeepFace.represent with skip detector (we already have face ROI)
-                result = DeepFace.represent(
-                    img_path=face_img,
-                    model_name='Facenet512',
-                    enforce_detection=False,
-                    detector_backend='skip'
-                )
+                # Đảm bảo ảnh có kích thước phù hợp
+                if face_img.shape[0] < 20 or face_img.shape[1] < 20:
+                    logger.warning("Face image too small for embedding extraction")
+                    return None
                 
-                if result and len(result) > 0:
-                    embedding = np.array(result[0]['embedding'])
-                    # Normalize embedding (L2)
-                    embedding = embedding / (np.linalg.norm(embedding) + 1e-6)
-                    return embedding
+                # Resize face để đảm bảo kích thước tối thiểu cho Facenet512
+                if face_img.shape[0] < 160 or face_img.shape[1] < 160:
+                    face_img = cv2.resize(face_img, (160, 160))
+                
+                # Thử với numpy array trước
+                try:
+                    result = DeepFace.represent(
+                        img_path=face_img,
+                        model_name='Facenet512',
+                        enforce_detection=False,
+                        detector_backend='skip'
+                    )
+                    
+                    if result and len(result) > 0:
+                        embedding = np.array(result[0]['embedding'])
+                        embedding = embedding / (np.linalg.norm(embedding) + 1e-6)
+                        return embedding
+                        
+                except Exception as e1:
+                    # Nếu numpy array thất bại, thử với file tạm
+                    logger.debug(f"Numpy array failed, trying temp file: {type(e1).__name__}")
+                    
+                    temp_file = None
+                    try:
+                        # Tạo file tạm
+                        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as f:
+                            temp_file = f.name
+                        cv2.imwrite(temp_file, face_img)
+                        
+                        result = DeepFace.represent(
+                            img_path=temp_file,
+                            model_name='Facenet512',
+                            enforce_detection=False,
+                            detector_backend='skip'
+                        )
+                        
+                        if result and len(result) > 0:
+                            embedding = np.array(result[0]['embedding'])
+                            embedding = embedding / (np.linalg.norm(embedding) + 1e-6)
+                            return embedding
+                            
+                    finally:
+                        # Xóa file tạm
+                        if temp_file and os.path.exists(temp_file):
+                            os.remove(temp_file)
             
-            # Fallback to simple histogram embedding
-            return self._extract_simple_embedding(face_img)
+            # Không fallback sang histogram nếu database đã có Facenet512 embeddings
+            # vì sẽ không khớp được (512-dim vs ~80-dim)
+            logger.warning("DeepFace not available and no fallback for Facenet512 database")
+            return None
             
         except Exception as e:
-            logger.warning(f"Embedding extraction failed: {e}")
-            return self._extract_simple_embedding(face_img)
+            logger.warning(f"Embedding extraction failed: {type(e).__name__}: {str(e)[:100]}")
+            return None
     
     def _extract_simple_embedding(self, face_img: np.ndarray) -> Optional[np.ndarray]:
         """Simple histogram-based embedding (fallback)"""
@@ -331,6 +418,7 @@ class FaceEmbedding:
                     
                     for item in data['data']:
                         mayte = item.get('maYTe')
+                        ten_benh_nhan = item.get('tenBenhNhan')
                         embeddings_list = item.get('embeddings', [])
                         
                         if not mayte or not embeddings_list:
@@ -347,7 +435,11 @@ class FaceEmbedding:
                                 person_embeddings.append(embedding)
                         
                         if person_embeddings:
-                            self.registered_faces[mayte] = person_embeddings
+                            # Store as dict with name and embeddings
+                            self.registered_faces[mayte] = {
+                                'name': ten_benh_nhan or mayte,
+                                'embeddings': person_embeddings
+                            }
                             count += 1
                     
                     logger.info(f"✅ Loaded {count} patients from SQL Server (Backend API)")
@@ -481,8 +573,14 @@ class FaceEmbedding:
         best_match = None
         best_similarity = 0.0
         
-        for person_id, person_embeddings in self.registered_faces.items():
-            for ref_embedding in person_embeddings:
+        for person_id, person_data in self.registered_faces.items():
+            # Handle both old format (list) and new format (dict with 'embeddings' key)
+            if isinstance(person_data, dict):
+                embeddings_list = person_data.get('embeddings', [])
+            else:
+                embeddings_list = person_data  # Old format - direct list
+            
+            for ref_embedding in embeddings_list:
                 similarity = self._cosine_similarity(embedding, ref_embedding)
                 if similarity > best_similarity:
                     best_similarity = similarity
@@ -495,14 +593,14 @@ class FaceEmbedding:
         return None, best_similarity
     
     def register_face(self, person_id: str, face_img: np.ndarray, 
-                       save_to_backend: bool = True) -> Tuple[bool, str]:
+                       save_to_backend: bool = True, person_name: str = None) -> Tuple[bool, str]:
         """Register a new face for a person
         
         Args:
             person_id: Patient ID (MAYTE)
             face_img: Face image (BGR)
             save_to_backend: If True, also save image and embedding to Backend API (SQL Server)
-            
+            person_name: Full name of the person (optional, for display)
         Returns:
             Tuple of (success: bool, message: str)
         """
@@ -514,9 +612,20 @@ class FaceEmbedding:
             
             # Add to local cache (memory)
             if person_id not in self.registered_faces:
-                self.registered_faces[person_id] = []
-            
-            self.registered_faces[person_id].append(embedding)
+                self.registered_faces[person_id] = {
+                    'name': person_name or person_id,
+                    'embeddings': []
+                }
+            # If old format, upgrade to new format
+            if not isinstance(self.registered_faces[person_id], dict):
+                self.registered_faces[person_id] = {
+                    'name': person_name or person_id,
+                    'embeddings': list(self.registered_faces[person_id])
+                }
+            # Update name if provided
+            if person_name:
+                self.registered_faces[person_id]['name'] = person_name
+            self.registered_faces[person_id]['embeddings'].append(embedding)
             self._save_database()  # Save to local pickle (cache)
             
             # Save to Backend API (SQL Server) - PRIMARY STORAGE
@@ -543,7 +652,7 @@ class FaceEmbedding:
         try:
             # Call Backend API - chỉ gửi embedding, không gửi ảnh
             response = requests.post(
-                f"{self.backend_url}/api/face/register",
+                f"{self.backend_url}/api/face/embeddings",
                 json={
                     'maYTe': person_id,
                     'embedding': embedding.tolist(),
@@ -583,6 +692,10 @@ class FaceEmbedding:
         # Detect faces
         faces = self._detect_faces(frame)
         
+        # DEBUG: Log face detection results
+        if faces:
+            logger.info(f"👤 Detected {len(faces)} face(s), sizes: {[(f[2], f[3]) for f in faces]}")
+        
         # Performance: if no faces, clear cache and return early
         if not faces:
             self.last_face_bbox = None
@@ -597,6 +710,9 @@ class FaceEmbedding:
             
             # Check if face is large enough (person is close)
             is_close = w >= self.min_face_size
+            
+            # DEBUG: Log face size check
+            logger.info(f"   Face size: {w}x{h}, min_required: {self.min_face_size}, is_close: {is_close}")
             
             # Performance: skip if face is too small (too far)
             if not is_close:
@@ -633,8 +749,10 @@ class FaceEmbedding:
             self.last_face_bbox = (x, y, w, h)
             
             # Extract embedding
+            logger.info(f"   Extracting embedding...")
             embedding = self._extract_embedding(face_img)
             if embedding is None:
+                logger.warning(f"   ⚠️ Embedding extraction FAILED!")
                 results.append({
                     'bbox': (x, y, w, h),
                     'person_id': None,
@@ -644,8 +762,13 @@ class FaceEmbedding:
                 })
                 continue
             
+            logger.info(f"   Embedding extracted: shape={embedding.shape}")
+            
             # Find match
             person_id, similarity = self._find_match(embedding)
+            
+            # DEBUG: Log matching result
+            logger.info(f"   Match result: person_id={person_id}, similarity={similarity:.4f}, threshold={self.threshold}")
             
             result = {
                 'bbox': (x, y, w, h),
@@ -661,7 +784,7 @@ class FaceEmbedding:
                 self.last_recognized_id = person_id
                 self.last_recognized_time = current_time
                 
-                logger.debug(f"🔍 Face match: {person_id} (similarity={similarity:.3f}, close={is_close})")
+                logger.info(f"✅ Face MATCHED: {person_id} (similarity={similarity:.3f})")
                 
                 # Auto-record detection if enabled and face is close enough
                 if auto_record and self.auto_detection_enabled and is_close:
@@ -669,15 +792,17 @@ class FaceEmbedding:
             else:
                 # Unknown face - clear cache
                 self.last_recognized_id = None
+                logger.info(f"❌ Face NOT matched (best similarity: {similarity:.3f} < threshold {self.threshold})")
         
         return results
     
-    def process_frame(self, frame: np.ndarray, auto_record: bool = False) -> Dict:
+    def process_frame(self, frame: np.ndarray, auto_record: bool = False, show_bounding_box: bool = True) -> Dict:
         """Process a video frame for face recognition
         
         Args:
             frame: Input video frame (BGR)
             auto_record: If True, automatically record detections to backend
+            show_bounding_box: If True, draw bounding boxes on annotated frame
         
         Returns dict compatible with camera_server.py:
         {
@@ -691,7 +816,7 @@ class FaceEmbedding:
         # Only process every N frames for performance
         if self.frame_count % self.detection_interval != 0:
             # Use last results
-            annotated = self._annotate_frame(frame, self.last_results)
+            annotated = self._annotate_frame(frame, self.last_results, show_bounding_box)
             recognized = [f for f in self.last_results if f.get('person_id')]
             return {
                 'annotated_frame': annotated,
@@ -719,8 +844,8 @@ class FaceEmbedding:
         
         self.last_results = results
         
-        # Annotate frame
-        annotated = self._annotate_frame(frame, results)
+        # Annotate frame (with or without bounding box)
+        annotated = self._annotate_frame(frame, results, show_bounding_box)
         
         # Only return recognized faces (confidence >= threshold)
         recognized = [f for f in results if f.get('person_id')]
@@ -732,42 +857,65 @@ class FaceEmbedding:
     
     def _convert_result(self, r: Dict) -> Dict:
         """Convert internal result to camera_server format"""
+        person_id = r.get('person_id')
+        # Try to get the name from registered_faces if available
+        name = person_id
+        if person_id and person_id in self.registered_faces:
+            data = self.registered_faces[person_id]
+            if isinstance(data, dict):
+                name = data.get('name', person_id)
         return {
-            'person_id': r.get('person_id'),
-            'person_name': r.get('person_id'),  # Use ID as name for now
+            'person_id': person_id,
+            'person_name': name,
             'confidence': r.get('similarity', 0),
-            'recognized': r.get('person_id') is not None,
+            'recognized': person_id is not None,
             'bbox': r.get('bbox')
         }
     
-    def _annotate_frame(self, frame: np.ndarray, results: List[Dict]) -> np.ndarray:
-        """Draw face recognition results on frame
-        Only show boxes for recognized faces (confidence >= threshold)
+    def _annotate_frame(self, frame: np.ndarray, results: List[Dict], show_bounding_box: bool = True) -> np.ndarray:
+        """Draw face detection/recognition results on frame
+        Always show bounding box for detected faces, with different colors:
+        - GREEN: Recognized face (in database)
+        - RED: Unknown face (not in database)
+        
+        Args:
+            frame: Input frame
+            results: Face detection/recognition results
+            show_bounding_box: If False, return frame without any annotations
         """
         annotated = frame.copy()
+        
+        # If show_bounding_box is False, return frame as-is (no annotations)
+        if not show_bounding_box:
+            return annotated
         
         for r in results:
             x, y, w, h = r['bbox']
             person_id = r.get('person_id')
             similarity = r.get('similarity', 0)
             
-            # Only draw box for recognized faces (confidence >= 80%)
             if person_id:
-                # Matched - green box
+                # Matched - GREEN box
                 color = (0, 255, 0)
                 label = f"{person_id} ({similarity*100:.0f}%)"
-                
-                # Draw box
-                cv2.rectangle(annotated, (x, y), (x + w, y + h), color, 2)
-                
-                # Draw label background
-                (label_w, label_h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
-                cv2.rectangle(annotated, (x, y - label_h - 10), (x + label_w, y), color, -1)
-                
-                # Draw label text
-                cv2.putText(annotated, label, (x, y - 5), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-            # Skip drawing for unknown/low confidence faces
+            else:
+                # Unknown - RED box
+                color = (0, 0, 255)
+                if similarity > 0:
+                    label = f"Unknown ({similarity*100:.0f}%)"
+                else:
+                    label = "Detecting..."
+            
+            # Draw bounding box
+            cv2.rectangle(annotated, (x, y), (x + w, y + h), color, 2)
+            
+            # Draw label background
+            (label_w, label_h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+            cv2.rectangle(annotated, (x, y - label_h - 10), (x + label_w, y), color, -1)
+            
+            # Draw label text
+            cv2.putText(annotated, label, (x, y - 5), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
         
         return annotated
     
@@ -797,11 +945,18 @@ class FaceEmbedding:
     def list_registered(self) -> List[Dict]:
         """List all registered faces with details (for API compatibility)"""
         result = []
-        for person_id, embeddings in self.registered_faces.items():
+        for person_id, data in self.registered_faces.items():
+            # Support both old and new format for backward compatibility
+            if isinstance(data, dict) and 'embeddings' in data:
+                name = data.get('name', person_id)
+                embeddings = data.get('embeddings', [])
+            else:
+                name = person_id
+                embeddings = data
             result.append({
                 'id': person_id,
                 'person_id': person_id,
-                'name': person_id,  # Use ID as name
+                'name': name,
                 'face_count': len(embeddings),
                 'embedding_count': len(embeddings)
             })
