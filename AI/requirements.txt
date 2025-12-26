@@ -22,7 +22,7 @@ opencv-python>=4.10.0
 numpy>=2.0.0
 Pillow>=10.4.0
 
-# API Communication
+# API Communication 
 requests>=2.32.0
 websocket-client>=1.8.0
 
