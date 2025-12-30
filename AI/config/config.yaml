@@ -70,21 +70,33 @@ fall_detection:
   enabled: true
   use_gpu: true # Enable CUDA
   device: "cuda:0" # Use first GPU
-  model_path: "yolov8n-pose.pt" # Nano model for speed
-  # For better accuracy (if GPU can handle): yolov8s-pose.pt or yolov8m-pose.pt
-  conf_threshold: 0.5 # Confidence threshold
+  model_path: "yolov8s-pose.pt" # Small model - cân bằng tốt cho GTX 1650
+  # Options: yolov8n-pose.pt (fast, weak), yolov8s-pose.pt (balanced - KHUYẾN NGHỊ),
+  #          yolov8m-pose.pt (accurate but LAG), yolov8l-pose.pt (very slow)
+  conf_threshold: 0.25 # GIẢM từ 0.4 → 0.25 để detect tốt hơn khi té (keep tracking)
   iou_threshold: 0.45 # NMS threshold
   half_precision: true # FP16 for faster inference on GTX 1650
+
+  # Advanced detection settings (Tối ưu cho performance)
+  imgsz: 480 # Input size - giảm từ 640 xuống 480 để tăng tốc 30-40%
+  max_det: 3 # Maximum detections - giảm từ 5 xuống 3 (chỉ cần 1-2 người)
+  agnostic_nms: false # Class-agnostic NMS
+  retina_masks: false # High-resolution masks
 
   # Fall detection parameters
   model_complexity: 1 # 0, 1, or 2 (higher = more accurate but slower)
   min_detection_confidence: 0.7
   min_tracking_confidence: 0.5
   fall_threshold:
-    vertical_speed: 0.5 # Sudden vertical movement
-    angle_threshold: 45 # Degrees from vertical
-    duration_threshold: 0.5 # Seconds to confirm fall
-  cooldown_seconds: 5 # Time before next fall detection
+    vertical_speed: 0.08 # GIẢM từ 0.1 → 0.08 để nhạy hơn
+    angle_threshold: 70 # GIẢM từ 80 → 70 độ để bắt được té chậm
+    duration_threshold: 0.05 # GIẢM từ 0.1 → 0.05s để phản ứng nhanh hơn
+  cooldown_seconds: 5 # Về lại 5s (10s quá lâu)
+  max_missing_frames: 15 # GIẢM từ 100 → 15 (nếu mất quá nhiều frame = không còn ý nghĩa)
+
+  # Motion-based detection (DISABLED - không hiệu quả)
+  motion_threshold: 0.05
+  use_motion_fallback: false # TẮT HOÀN TOÀN - chỉ dùng pose-based
 
 # API Settings
 api:

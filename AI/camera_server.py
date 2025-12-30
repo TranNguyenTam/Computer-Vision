@@ -183,13 +183,16 @@ def process_frames():
             error_count = 0  # Reset on success
             frame_count += 1
             
+            # Keep ORIGINAL frame at full resolution (1920x1080) for high quality stream
+            original_frame = frame.copy()
+            
             # Resize for processing (960x540 = balance quality & speed)
             process_frame = cv2.resize(frame, (960, 540))
             display_frame = process_frame.copy()
             
-            # Lưu raw frame (không có AI overlay) cho trang đăng ký
+            # Lưu raw frame GỐC KHÔNG RESIZE (cho trang camera HQ)
             with frame_lock:
-                raw_frame = process_frame.copy()
+                raw_frame = original_frame.copy()  # Full resolution 1920x1080
             
             # Run AI if enabled
             if ai_settings["ai_enabled"]:
@@ -338,6 +341,25 @@ def generate_raw_mjpeg():
         time.sleep(0.033)  # ~30 FPS (enough for registration)
 
 
+def generate_hq_mjpeg():
+    """Generate HIGH QUALITY MJPEG stream without AI overlay (for camera monitoring page)"""
+    while True:
+        with frame_lock:
+            if raw_frame is None:
+                time.sleep(0.005)
+                continue
+            frame = raw_frame.copy()
+        
+        # High quality for best viewing experience (95%)
+        _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
+        frame_bytes = buffer.tobytes()
+        
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+        
+        time.sleep(0.016)  # ~60 FPS for smooth playback
+
+
 # ============== API Routes ==============
 
 @app.route('/api/stream')
@@ -351,6 +373,13 @@ def video_stream():
 def video_stream_raw():
     """RAW MJPEG video stream endpoint (without AI overlay - for registration)"""
     return Response(generate_raw_mjpeg(),
+                   mimetype='multipart/x-mixed-replace; boundary=frame')
+
+
+@app.route('/api/stream/hq')
+def video_stream_hq():
+    """HIGH QUALITY MJPEG video stream endpoint (best quality for camera monitoring)"""
+    return Response(generate_hq_mjpeg(),
                    mimetype='multipart/x-mixed-replace; boundary=frame')
 
 

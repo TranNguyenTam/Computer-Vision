@@ -1,13 +1,13 @@
 import {
-    Camera,
-    Maximize2,
-    RefreshCw,
-    Settings,
-    Video,
-    VideoOff,
-    Wifi,
-    WifiOff,
-    X
+  Camera,
+  Maximize2,
+  RefreshCw,
+  Settings,
+  Video,
+  VideoOff,
+  Wifi,
+  WifiOff,
+  X
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Camera as CameraType } from '../types';
@@ -26,7 +26,7 @@ const mockCameras: CameraType[] = [
     fallDetectionEnabled: false,
     faceRecognitionEnabled: false,
     lastActivity: new Date().toISOString(),
-    streamUrl: `${CAMERA_SERVER_URL}/api/stream/raw`,
+    streamUrl: `${CAMERA_SERVER_URL}/api/stream/hq`,  // High quality stream for camera page
   },
   {
     id: 'cam-2',

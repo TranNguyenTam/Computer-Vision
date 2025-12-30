@@ -95,6 +95,11 @@ def main():
     from camera_manager import HikvisionCamera, load_camera_configs
     from yolo_fall_detector import YOLOFallDetector, PoseState
     
+    # Tạo thư mục lưu ảnh té ngã
+    fall_images_dir = Path("fall_images")
+    fall_images_dir.mkdir(exist_ok=True)
+    print(f"📁 Ảnh té ngã sẽ được lưu tại: {fall_images_dir.absolute()}")
+    
     # Initialize camera
     print("\n📹 Initializing camera...")
     camera_configs = load_camera_configs(str(Path(__file__).parent / "config" / "config.yaml"))
@@ -157,6 +162,13 @@ def main():
             confidence = result.get('confidence', 0.9)
             
             logger.warning(f"🚨 FALL DETECTED! Sending to backend...")
+            
+            # Lưu ảnh té ngã
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            image_filename = f"fall_{timestamp}_{fall_count}.jpg"
+            image_path = fall_images_dir / image_filename
+            cv2.imwrite(str(image_path), process_frame)
+            logger.info(f"💾 Đã lưu ảnh: {image_filename}")
             
             # Send to backend
             if send_fall_alert(process_frame, confidence, "Main Entrance"):

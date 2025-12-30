@@ -1,9 +1,7 @@
 import {
   AlertCircle,
-  Camera,
   Check,
   CheckCircle2,
-  Image as ImageIcon,
   Loader2,
   Plus,
   Search,
@@ -70,13 +68,16 @@ const FaceRecognitionPage: React.FC = () => {
   const [settings, setSettings] = useState<AISettings | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+  
   // Detection history
   const [detectionsToday, setDetectionsToday] = useState<DetectionRecord[]>([]);
   const [loadingDetections, setLoadingDetections] = useState(false);
   
   // Registration modal
   const [showRegisterModal, setShowRegisterModal] = useState(false);
-  const [registerMode, setRegisterMode] = useState<'camera' | 'upload'>('camera');
   const [registerData, setRegisterData] = useState({
     person_id: '',  // MAYTE
     person_name: '',
@@ -315,35 +316,12 @@ const FaceRecognitionPage: React.FC = () => {
     setRegisterResult(null);
 
     try {
-      if (registerMode === 'camera') {
-        // Register from current camera frame
-        const response = await fetch(`${CAMERA_SERVER_URL}/api/faces/register-from-camera`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            person_id: registerData.person_id,
-            person_name: registerData.person_name,
-            person_type: 'patient'  // Luôn là patient
-          }),
-        });
-        
-        const result = await response.json();
-        if (result.success) {
-          setRegisterResult({ success: true, message: result.message || 'Đăng ký thành công!' });
-          fetchFaces();
-          setTimeout(() => {
-            closeRegisterModal();
-          }, 1500);
-        } else {
-          setRegisterResult({ success: false, message: result.error || 'Đăng ký thất bại' });
-        }
-      } else {
-        // Register from uploaded images - nhiều ảnh
-        if (selectedFiles.length === 0) {
-          setRegisterResult({ success: false, message: 'Vui lòng chọn ít nhất 1 ảnh' });
-          setRegistering(false);
-          return;
-        }
+      // Register from uploaded images - nhiều ảnh
+      if (selectedFiles.length === 0) {
+        setRegisterResult({ success: false, message: 'Vui lòng chọn ít nhất 1 ảnh' });
+        setRegistering(false);
+        return;
+      }
 
         setRegisterProgress({ current: 0, total: selectedFiles.length });
         let successCount = 0;
@@ -390,9 +368,8 @@ const FaceRecognitionPage: React.FC = () => {
             message: `Đăng ký ${successCount}/${selectedFiles.length} ảnh. Lỗi: ${lastError}` 
           });
           fetchFaces();
-        } else {
-          setRegisterResult({ success: false, message: lastError || 'Đăng ký thất bại' });
-        }
+      } else {
+        setRegisterResult({ success: false, message: lastError || 'Đăng ký thất bại' });
       }
     } catch (error) {
       setRegisterResult({ success: false, message: 'Không thể kết nối server' });
@@ -435,6 +412,18 @@ const FaceRecognitionPage: React.FC = () => {
     (face.person_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
     (face.person_id || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // Pagination logic
+  const totalPages = Math.ceil(filteredFaces.length / itemsPerPage);
+  const currentFaces = filteredFaces.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  // Reset page when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
 
   return (
     <div className="space-y-8">
@@ -511,7 +500,7 @@ const FaceRecognitionPage: React.FC = () => {
           <div className="p-4 border-b border-slate-200 flex items-center justify-between">
             <h3 className="font-medium text-slate-800 flex items-center gap-2">
               <UserCheck className="w-5 h-5 text-emerald-600" />
-              Nhận diện hôm nay ({detectionsToday.length})
+              Nhận diện hôm nay 
             </h3>
           </div>
           <div className="p-4">
@@ -556,19 +545,22 @@ const FaceRecognitionPage: React.FC = () => {
 
       {/* Search and List */}
       <div className="bg-white rounded-xl border border-slate-200">
-        {/* Search bar */}
-        <div className="p-4 border-b border-slate-200">
-          <div className="flex items-center gap-4">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Tìm kiếm theo tên hoặc mã..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-200 focus:border-slate-400 transition-all text-sm"
-              />
-            </div>
+        <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <h3 className="font-medium text-slate-800 flex items-center gap-2">
+            <Users className="w-5 h-5 text-blue-600" />
+            Bệnh nhân đã đăng ký khuôn mặt
+          </h3>
+          
+          {/* Search bar */}
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Tìm kiếm..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-200 focus:border-slate-400 transition-all text-sm"
+            />
           </div>
         </div>
 
@@ -584,54 +576,70 @@ const FaceRecognitionPage: React.FC = () => {
             <p className="text-sm mt-1">Nhấn "Đăng ký mới" để thêm khuôn mặt</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 p-4">
-            {filteredFaces.map((face) => (
-              <div
-                key={face.person_id}
-                className="bg-slate-50 rounded-xl p-4 border border-slate-200 hover:border-slate-300 transition-all group"
-              >
-                {/* Face image */}
-                <div className="relative aspect-square mb-3 rounded-lg overflow-hidden bg-slate-200">
-                  <img
-                    src={`${CAMERA_SERVER_URL}/api/faces/${face.person_id}/image`}
-                    alt={face.person_name}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = 'none';
-                    }}
-                  />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <User className="w-12 h-12 text-slate-400" />
-                  </div>
-                  
-                  {/* Image count badge */}
-                  {face.image_count && face.image_count > 1 && (
-                    <div className="absolute bottom-2 left-2 flex items-center gap-1 px-1.5 py-0.5 bg-black/60 text-white text-xs rounded">
-                      <ImageIcon className="w-3 h-3" />
-                      {face.image_count}
-                    </div>
-                  )}
-                  
-                  {/* Delete button */}
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500 font-semibold">
+                    <th className="px-4 py-3">Mã Y Tế</th>
+                    <th className="px-4 py-3">Tên Bệnh Nhân</th>
+                    <th className="px-4 py-3">Loại</th>
+                    <th className="px-4 py-3 text-right">Hành động</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {currentFaces.map((face) => (
+                    <tr key={face.person_id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3 text-sm font-medium text-slate-800">{face.person_id}</td>
+                      <td className="px-4 py-3 text-sm text-slate-600">{face.person_name}</td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                          {face.person_type === 'patient' ? 'Bệnh nhân' : face.person_type}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          onClick={() => handleDelete(face.person_id)}
+                          className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Xóa"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200">
+                <div className="text-sm text-slate-500">
+                  Hiển thị {((currentPage - 1) * itemsPerPage) + 1} đến {Math.min(currentPage * itemsPerPage, filteredFaces.length)} trong số {filteredFaces.length} bệnh nhân
+                </div>
+                <div className="flex gap-2">
                   <button
-                    onClick={() => handleDelete(face.person_id)}
-                    className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1 text-sm border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <Trash2 className="w-3 h-3" />
+                    Trước
+                  </button>
+                  <span className="px-3 py-1 text-sm bg-slate-100 rounded">
+                    {currentPage} / {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1 text-sm border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Sau
                   </button>
                 </div>
-
-                {/* Info */}
-                <div className="text-center">
-                  <p className="font-medium text-slate-800 truncate">{face.person_name}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">MAYTE: {face.person_id}</p>
-                  <span className="inline-block mt-2 text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
-                    Bệnh nhân
-                  </span>
-                </div>
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </div>
 
@@ -727,46 +735,9 @@ const FaceRecognitionPage: React.FC = () => {
                 </div>
               )}
               
-              {/* Mode selection */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setRegisterMode('camera')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border-2 transition-all ${
-                    registerMode === 'camera'
-                      ? 'border-slate-800 bg-slate-800 text-white'
-                      : 'border-slate-200 hover:border-slate-300'
-                  }`}
-                >
-                  <Camera className="w-4 h-4" />
-                  Từ Camera
-                </button>
-                <button
-                  onClick={() => setRegisterMode('upload')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border-2 transition-all ${
-                    registerMode === 'upload'
-                      ? 'border-slate-800 bg-slate-800 text-white'
-                      : 'border-slate-200 hover:border-slate-300'
-                  }`}
-                >
-                  <Upload className="w-4 h-4" />
-                  Tải ảnh lên
-                </button>
-              </div>
-
-              {/* Camera preview or upload */}
-              {registerMode === 'camera' ? (
-                <div className="aspect-video bg-slate-900 rounded-lg overflow-hidden relative">
-                  {/* Sử dụng raw stream không có AI overlay */}
-                  <img
-                    src={`${CAMERA_SERVER_URL}/api/stream/raw`}
-                    alt="Camera preview"
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute bottom-2 left-2 text-xs text-white/70 bg-black/50 px-2 py-1 rounded">
-                    💡 Đảm bảo khuôn mặt rõ ràng, đủ sáng
-                  </div>
-                </div>
-              ) : (
+              {/* Upload interface */}
+              <div>
+                <label className="block text-sm text-slate-600 mb-2">Tải ảnh lên *</label>
                 <div className="border-2 border-dashed border-slate-300 rounded-lg p-6">
                   <input
                     type="file"
@@ -806,7 +777,7 @@ const FaceRecognitionPage: React.FC = () => {
                     )}
                   </label>
                 </div>
-              )}
+              </div>
 
               {/* Hidden form fields (auto-filled from selected patient) */}
               {!selectedPatient && (
