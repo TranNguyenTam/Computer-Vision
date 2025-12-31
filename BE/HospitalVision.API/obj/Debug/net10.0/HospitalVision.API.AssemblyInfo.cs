@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("HospitalVision.API")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+d50972dfe803b520a12a065d7923ba4912e24568")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+633f2a0fa5f8b1c1a8da9319866079fbeab2009e")]
 [assembly: System.Reflection.AssemblyProductAttribute("HospitalVision.API")]
 [assembly: System.Reflection.AssemblyTitleAttribute("HospitalVision.API")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

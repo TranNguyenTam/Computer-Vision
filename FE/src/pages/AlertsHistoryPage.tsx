@@ -1,15 +1,14 @@
 import {
-    AlertTriangle,
-    Calendar,
-    CheckCircle,
-    ChevronLeft,
-    ChevronRight,
-    Clock,
-    Download,
-    Filter,
-    MapPin,
-    User,
-    XCircle
+  AlertTriangle,
+  Calendar,
+  CheckCircle,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Download,
+  Filter,
+  MapPin,
+  XCircle
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { alertApi } from '../services/api';
@@ -223,9 +222,9 @@ const AlertsHistoryPage: React.FC = () => {
                     <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
                       Thời gian
                     </th>
-                    <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                    {/* <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
                       Bệnh nhân
-                    </th>
+                    </th> */}
                     <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
                       Vị trí
                     </th>
@@ -249,14 +248,14 @@ const AlertsHistoryPage: React.FC = () => {
                           {formatDateTime(alert.timestamp)}
                         </div>
                       </td>
-                      <td className="px-5 py-4">
+                      {/* <td className="px-5 py-4">
                         <div className="flex items-center gap-2">
                           <User className="w-4 h-4 text-slate-400" />
                           <span className="text-sm text-slate-800">
                             {alert.patientName || 'Không xác định'}
                           </span>
                         </div>
-                      </td>
+                      </td> */}
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-2 text-sm text-slate-700">
                           <MapPin className="w-4 h-4 text-slate-400" />

@@ -1,0 +1,646 @@
+{
+	"info": {
+		"_postman_id": "hospital-vision-api",
+		"name": "Hospital Vision API",
+		"description": "API Collection for Hospital Vision - Fall Detection & Face Recognition System",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:5000",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Alert Management",
+			"item": [
+				{
+					"name": "Create Fall Alert",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"patientId\": \"P001\",\n  \"patientName\": \"Nguyen Van A\",\n  \"location\": \"Room 101\",\n  \"confidence\": 0.95,\n  \"frameData\": \"base64_encoded_image_string\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/fall-alert",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "fall-alert"]
+						},
+						"description": "Receive fall alert from AI module"
+					}
+				},
+				{
+					"name": "Get Active Alerts",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/alerts/active",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "alerts", "active"]
+						},
+						"description": "Get all active alerts"
+					}
+				},
+				{
+					"name": "Get All Alerts",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/alerts?page=1&pageSize=20",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "alerts"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Page number (default: 1)"
+								},
+								{
+									"key": "pageSize",
+									"value": "20",
+									"description": "Items per page (default: 20)"
+								}
+							]
+						},
+						"description": "Get all alerts with pagination"
+					}
+				},
+				{
+					"name": "Get Alert By ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/alerts/:id",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "alerts", ":id"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Alert ID"
+								}
+							]
+						},
+						"description": "Get specific alert by ID"
+					}
+				},
+				{
+					"name": "Get Alert Image",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/alerts/:id/image",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "alerts", ":id", "image"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Alert ID"
+								}
+							]
+						},
+						"description": "Get alert image as JPEG"
+					}
+				},
+				{
+					"name": "Update Alert Status",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"Acknowledged\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/alerts/:id/status",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "alerts", ":id", "status"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Alert ID"
+								}
+							]
+						},
+						"description": "Update alert status"
+					}
+				},
+				{
+					"name": "Acknowledge Alert",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"acknowledgedBy\": \"Nurse Lan\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/alerts/:id/acknowledge",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "alerts", ":id", "acknowledge"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Alert ID"
+								}
+							]
+						},
+						"description": "Acknowledge an alert"
+					}
+				},
+				{
+					"name": "Resolve Alert",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"resolvedBy\": \"Dr. Minh\",\n  \"notes\": \"False alarm - patient was sitting down\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/alerts/:id/resolve",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "alerts", ":id", "resolve"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Alert ID"
+								}
+							]
+						},
+						"description": "Resolve an alert"
+					}
+				}
+			]
+		},
+		{
+			"name": "Patient Management (BenhNhan)",
+			"item": [
+				{
+					"name": "Get All Patients",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/BenhNhan?page=1&count=50",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "BenhNhan"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Page number (default: 1)"
+								},
+								{
+									"key": "count",
+									"value": "50",
+									"description": "Items per page (max: 100)"
+								}
+							]
+						},
+						"description": "Lấy danh sách bệnh nhân từ bảng TT_BENHNHAN (phân trang)"
+					}
+				},
+				{
+					"name": "Get Patient By ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/BenhNhan/:id",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "BenhNhan", ":id"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Patient ID"
+								}
+							]
+						},
+						"description": "Lấy thông tin bệnh nhân theo ID"
+					}
+				},
+				{
+					"name": "Search Patients",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/BenhNhan/search?q=nguyen",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "BenhNhan", "search"],
+							"query": [
+								{
+									"key": "q",
+									"value": "nguyen",
+									"description": "Search term (name, code, phone)"
+								}
+							]
+						},
+						"description": "Tìm kiếm bệnh nhân theo tên, mã y tế hoặc số điện thoại"
+					}
+				}
+			]
+		},
+		{
+			"name": "Dashboard",
+			"item": [
+				{
+					"name": "Get Dashboard Stats",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/Dashboard/stats",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "Dashboard", "stats"]
+						},
+						"description": "Get thông tin thống kê cho dashboard"
+					}
+				},
+				{
+					"name": "Get System Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/Dashboard/status",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "Dashboard", "status"]
+						},
+						"description": "Get trạng thái hệ thống"
+					}
+				}
+			]
+		},
+		{
+			"name": "Face Recognition",
+			"item": [
+				{
+					"name": "Validate MaYTe",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/Face/validate/:mayte",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "Face", "validate", ":mayte"],
+							"variable": [
+								{
+									"key": "mayte",
+									"value": "BN001",
+									"description": "Mã y tế của bệnh nhân"
+								}
+							]
+						},
+						"description": "Kiểm tra mã y tế có tồn tại không"
+					}
+				},
+				{
+					"name": "Search Patient",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/Face/search-patient?term=nguyen",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "Face", "search-patient"],
+							"query": [
+								{
+									"key": "term",
+									"value": "nguyen",
+									"description": "Search term (min 2 chars)"
+								}
+							]
+						},
+						"description": "Tìm kiếm bệnh nhân theo tên hoặc mã y tế"
+					}
+				},
+				{
+					"name": "Get Patient By MaYTe",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/Face/patient/:mayte",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "Face", "patient", ":mayte"],
+							"variable": [
+								{
+									"key": "mayte",
+									"value": "BN001",
+									"description": "Mã y tế"
+								}
+							]
+						},
+						"description": "Lấy thông tin chi tiết bệnh nhân"
+					}
+				},
+				{
+					"name": "Get Face Images",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/Face/images/:mayte",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "Face", "images", ":mayte"],
+							"variable": [
+								{
+									"key": "mayte",
+									"value": "BN001",
+									"description": "Mã y tế"
+								}
+							]
+						},
+						"description": "Lấy danh sách ảnh khuôn mặt của bệnh nhân"
+					}
+				},
+				{
+					"name": "Upload Face Image",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"maYTe\": \"BN001\",\n  \"embedding\": \"base64_encoded_embedding_array\",\n  \"imageData\": \"base64_encoded_image_string\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/Face/images",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "Face", "images"]
+						},
+						"description": "Upload ảnh khuôn mặt mới"
+					}
+				},
+				{
+					"name": "Delete Face Image",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/Face/images/:id",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "Face", "images", ":id"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Face image ID"
+								}
+							]
+						},
+						"description": "Xóa ảnh khuôn mặt"
+					}
+				},
+				{
+					"name": "Delete All Patient Faces",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/Face/patient/:maYTe",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "Face", "patient", ":maYTe"],
+							"variable": [
+								{
+									"key": "maYTe",
+									"value": "BN001",
+									"description": "Mã y tế"
+								}
+							]
+						},
+						"description": "Xóa tất cả ảnh của bệnh nhân"
+					}
+				},
+				{
+					"name": "Get Face Statistics",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/Face/stats",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "Face", "stats"]
+						},
+						"description": "Lấy thống kê face recognition"
+					}
+				},
+				{
+					"name": "Get All Embeddings",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/Face/embeddings",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "Face", "embeddings"]
+						},
+						"description": "Lấy tất cả embeddings cho AI module"
+					}
+				},
+				{
+					"name": "Save Embedding",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"maYTe\": \"BN001\",\n  \"embedding\": \"base64_encoded_embedding_array\",\n  \"imageData\": \"base64_encoded_image_string\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/Face/embeddings",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "Face", "embeddings"]
+						},
+						"description": "Lưu embedding từ AI module"
+					}
+				},
+				{
+					"name": "Record Detection",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"maYTe\": \"BN001\",\n  \"cameraId\": \"Camera-01\",\n  \"location\": \"Room 101\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/Face/detection",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "Face", "detection"]
+						},
+						"description": "Ghi nhận phát hiện khuôn mặt từ camera"
+					}
+				},
+				{
+					"name": "Get Today Detections",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/Face/detections/today",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "Face", "detections", "today"]
+						},
+						"description": "Lấy danh sách phát hiện hôm nay"
+					}
+				},
+				{
+					"name": "Get Today Detected MaYTes",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/Face/detections/today/mayte-list",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "Face", "detections", "today", "mayte-list"]
+						},
+						"description": "Lấy danh sách MaYTe đã phát hiện hôm nay"
+					}
+				},
+				{
+					"name": "Delete Today Detections",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/Face/detections/today",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "Face", "detections", "today"]
+						},
+						"description": "Xóa tất cả phát hiện hôm nay"
+					}
+				}
+			]
+		},
+		{
+			"name": "Patient Info",
+			"item": [
+				{
+					"name": "Get Patient Info",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/Patient/:patientId",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "Patient", ":patientId"],
+							"variable": [
+								{
+									"key": "patientId",
+									"value": "P001",
+									"description": "Patient ID"
+								}
+							]
+						},
+						"description": "Get patient information by ID (used by AI module after face recognition)"
+					}
+				},
+				{
+					"name": "Get All Patients List",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/Patient",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "Patient"]
+						},
+						"description": "Get all patients (returns data from TT_BENHNHAN table)"
+					}
+				},
+				{
+					"name": "Search Patients By Query",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/Patient/search?q=nguyen",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "Patient", "search"],
+							"query": [
+								{
+									"key": "q",
+									"value": "nguyen",
+									"description": "Search term (name, ID, or phone)"
+								}
+							]
+						},
+						"description": "Search patients by name, ID, or phone"
+					}
+				},
+				{
+					"name": "Patient Detected",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"patientId\": \"1\",\n  \"location\": \"Room 101\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/Patient/detected",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "Patient", "detected"]
+						},
+						"description": "Notify that a patient was detected by the AI module"
+					}
+				}
+			]
+		}
+	]
+}
