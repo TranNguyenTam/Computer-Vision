@@ -393,13 +393,6 @@ const FallAlertPage: React.FC = () => {
                     {cameraStatus === 'online' ? 'Hoạt động' :
                      cameraStatus === 'offline' ? 'Mất kết nối' : 'Kiểm tra...'}
                   </div>
-                  <button
-                    onClick={() => setStreamKey(Date.now())}
-                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
-                    title="Làm mới stream"
-                  >
-                    <RefreshCw className="w-4 h-4 text-slate-500" />
-                  </button>
                 </div>
               </div>
               
