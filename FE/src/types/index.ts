@@ -92,6 +92,9 @@ export interface DashboardStats {
   todayAppointments: number;
   activeAlerts: number;
   patientsDetectedToday: number;
+  totalFallsToday: number;
+  totalFallsThisWeek: number;
+  totalFallsThisMonth: number;
   recentAlerts: RecentAlert[];
   recentDetections: RecentDetection[];
 }
@@ -141,11 +144,9 @@ export interface SystemStatus {
 export type PageType = 
   | 'dashboard' 
   | 'patients' 
-  | 'fall-detection' 
-  | 'face-recognition'
-  | 'face-identify'
+  | 'fall-alert'       // Gộp fall-detection + alerts-history
+  | 'face-management'  // Gộp face-recognition + face-identify
   | 'cameras' 
-  | 'alerts-history' 
   | 'settings';
 
 export interface NavItem {

@@ -57,4 +57,25 @@ public class FallAlertRepository : Repository<FallAlert>, IFallAlertRepository
             .Take(count)
             .ToListAsync();
     }
+
+    public async Task<int> CountFallsTodayAsync()
+    {
+        var today = DateTime.UtcNow.Date;
+        return await _qmsContext.FallAlerts
+            .CountAsync(a => a.Timestamp.Date == today);
+    }
+
+    public async Task<int> CountFallsThisWeekAsync()
+    {
+        var startOfWeek = DateTime.UtcNow.Date.AddDays(-(int)DateTime.UtcNow.DayOfWeek);
+        return await _qmsContext.FallAlerts
+            .CountAsync(a => a.Timestamp >= startOfWeek);
+    }
+
+    public async Task<int> CountFallsThisMonthAsync()
+    {
+        var startOfMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+        return await _qmsContext.FallAlerts
+            .CountAsync(a => a.Timestamp >= startOfMonth);
+    }
 }

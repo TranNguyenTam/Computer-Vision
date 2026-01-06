@@ -81,6 +81,9 @@ public class DashboardStatsDto
     public int TodayAppointments { get; set; }
     public int ActiveAlerts { get; set; }
     public int PatientsDetectedToday { get; set; }
+    public int TotalFallsToday { get; set; }  // Tổng số té ngã hôm nay
+    public int TotalFallsThisWeek { get; set; }  // Tổng số té ngã tuần này
+    public int TotalFallsThisMonth { get; set; }  // Tổng số té ngã tháng này
     public List<FallAlertResponse> RecentAlerts { get; set; } = new();
     public List<RecentDetectionDto> RecentDetections { get; set; } = new();
 }

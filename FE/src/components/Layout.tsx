@@ -2,10 +2,8 @@ import {
   Activity,
   AlertTriangle,
   Camera,
-  ClipboardList,
   Home,
   Menu,
-  Scan,
   UserCircle,
   Users,
   Wifi,
@@ -28,11 +26,9 @@ export interface LayoutProps {
 const navItems: { id: PageType; label: string; icon: React.ReactNode }[] = [
   { id: 'dashboard', label: 'Tổng quan', icon: <Home className="w-5 h-5" /> },
   { id: 'patients', label: 'Bệnh nhân', icon: <Users className="w-5 h-5" /> },
-  { id: 'fall-detection', label: 'Phát hiện té ngã', icon: <AlertTriangle className="w-5 h-5" /> },
-  { id: 'face-recognition', label: 'Đăng ký khuôn mặt', icon: <UserCircle className="w-5 h-5" /> },
-  { id: 'face-identify', label: 'Nhận diện khuôn mặt', icon: <Scan className="w-5 h-5" /> },
+  { id: 'fall-alert', label: 'Phát hiện té ngã', icon: <AlertTriangle className="w-5 h-5" /> },
+  { id: 'face-management', label: 'Nhận dạng khuôn mặt', icon: <UserCircle className="w-5 h-5" /> },
   { id: 'cameras', label: 'Camera', icon: <Camera className="w-5 h-5" /> },
-  { id: 'alerts-history', label: 'Lịch sử cảnh báo', icon: <ClipboardList className="w-5 h-5" /> },
   // { id: 'settings', label: 'Cài đặt', icon: <Settings className="w-5 h-5" /> },
 ];
 
@@ -104,7 +100,7 @@ const Layout: React.FC<LayoutProps> = ({
             >
               {item.icon}
               {sidebarOpen && <span className="font-medium">{item.label}</span>}
-              {item.id === 'fall-detection' && activeAlerts > 0 && sidebarOpen && (
+              {item.id === 'fall-alert' && activeAlerts > 0 && sidebarOpen && (
                 <span className="ml-auto px-1.5 py-0.5 text-xs bg-red-500 text-white rounded-md">
                   {activeAlerts}
                 </span>

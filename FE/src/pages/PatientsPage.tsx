@@ -1,16 +1,16 @@
 import {
-  Calendar,
-  ChevronLeft,
-  ChevronRight,
-  CreditCard,
-  Eye,
-  Loader2,
-  MapPin,
-  Phone,
-  Search,
-  User,
-  UserCircle,
-  X,
+    Calendar,
+    ChevronLeft,
+    ChevronRight,
+    CreditCard,
+    Eye,
+    Loader2,
+    MapPin,
+    Phone,
+    Search,
+    User,
+    UserCircle,
+    X,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { benhNhanApi } from '../services/api';
@@ -32,11 +32,12 @@ const PatientsPage: React.FC = () => {
     try {
       setLoading(true);
       const response = await benhNhanApi.getAll(page, pageSize);
-      setPatients(response.data);
-      setTotalPages(response.pagination.totalPages);
-      setTotalItems(response.pagination.totalItems);
+      setPatients(response?.data ?? []);
+      setTotalPages(response?.pagination?.totalPages ?? 1);
+      setTotalItems(response?.pagination?.totalItems ?? 0);
     } catch (error) {
       console.error('Error fetching patients:', error);
+      setPatients([]);
     } finally {
       setLoading(false);
     }
@@ -55,9 +56,11 @@ const PatientsPage: React.FC = () => {
     try {
       setSearching(true);
       const results = await benhNhanApi.search(searchQuery);
-      setSearchResults(results);
+      // Ensure results is always an array
+      setSearchResults(Array.isArray(results) ? results : []);
     } catch (error) {
       console.error('Error searching patients:', error);
+      setSearchResults([]);
     } finally {
       setSearching(false);
     }
@@ -79,7 +82,10 @@ const PatientsPage: React.FC = () => {
     return 'Không rõ';
   };
 
-  const displayPatients = searchResults || patients;
+  // Ensure displayPatients is always an array
+  const patientsArray = Array.isArray(patients) ? patients : [];
+  const searchArray = searchResults !== null ? (Array.isArray(searchResults) ? searchResults : []) : null;
+  const displayPatients = searchArray ?? patientsArray;
 
   return (
     <div className="space-y-6">

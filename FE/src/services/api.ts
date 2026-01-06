@@ -21,12 +21,22 @@ interface PaginatedResponse<T> {
   };
 }
 
+// API Response wrapper from backend
+interface ApiResponseWrapper<T> {
+  success: boolean;
+  message?: string;
+  data?: T;
+  errors?: string[];
+  timestamp: string;
+}
+
 // ==================== BỆNH NHÂN API ====================
 export const benhNhanApi = {
   // Lấy danh sách bệnh nhân (phân trang)
   getAll: async (page = 1, count = 50): Promise<PaginatedResponse<BenhNhan>> => {
-    const response = await api.get('/benhnhan', { params: { page, count } });
-    return response.data;
+    const response = await api.get<ApiResponseWrapper<PaginatedResponse<BenhNhan>>>('/benhnhan', { params: { page, count } });
+    // Unwrap ApiResponse wrapper - data is inside response.data.data
+    return response.data.data ?? { data: [], pagination: { page: 1, pageSize: count, totalItems: 0, totalPages: 0 } };
   },
 
   // Lấy thông tin bệnh nhân theo ID
@@ -129,13 +139,21 @@ export const alertApi = {
 // ==================== DASHBOARD API ====================
 export const dashboardApi = {
   getStats: async (): Promise<DashboardStats> => {
-    const response = await api.get('/dashboard/stats');
-    return response.data;
+    const response = await api.get<ApiResponseWrapper<DashboardStats>>('/dashboard/stats');
+    // Unwrap ApiResponse wrapper
+    return response.data.data ?? {
+      totalPatients: 0,
+      todayAppointments: 0,
+      activeAlerts: 0,
+      patientsDetectedToday: 0,
+      recentAlerts: [],
+      recentDetections: []
+    };
   },
 
   getStatus: async (): Promise<SystemStatus> => {
-    const response = await api.get('/dashboard/status');
-    return response.data;
+    const response = await api.get<ApiResponseWrapper<SystemStatus>>('/dashboard/status');
+    return response.data.data ?? { status: 'offline', timestamp: new Date().toISOString(), version: '1.0.0' };
   },
 };
 

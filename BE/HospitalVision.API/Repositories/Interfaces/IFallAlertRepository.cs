@@ -10,4 +10,7 @@ public interface IFallAlertRepository : IRepository<FallAlert>
     Task<int> CountActiveAlertsAsync();
     Task<int> CountAllAlertsAsync();
     Task<List<FallAlert>> GetRecentAlertsAsync(int count = 10);
+    Task<int> CountFallsTodayAsync();
+    Task<int> CountFallsThisWeekAsync();
+    Task<int> CountFallsThisMonthAsync();
 }

@@ -2,12 +2,10 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Layout from './components/Layout';
 import { NotificationToast } from './components/NotificationCenter';
 import { useSignalR } from './hooks/useSignalR';
-import AlertsHistoryPage from './pages/AlertsHistoryPage';
 import CamerasPage from './pages/CamerasPage';
 import DashboardPage from './pages/DashboardPage';
-import FaceIdentifyPage from './pages/FaceIdentifyPage';
-import FaceRecognitionPage from './pages/FaceRecognitionPage';
-import FallDetectionPage from './pages/FallDetectionPage';
+import FaceManagementPage from './pages/FaceManagementPage';
+import FallAlertPage from './pages/FallAlertPage';
 import PatientsPage from './pages/PatientsPage';
 import SettingsPage from './pages/SettingsPage';
 import { alertApi, dashboardApi } from './services/api';
@@ -83,7 +81,7 @@ const App: React.FC = () => {
   }, []);
 
   const handleNavigateToAlerts = () => {
-    setCurrentPage('fall-detection');
+    setCurrentPage('fall-alert');
   };
 
   const handleDismissToast = (alertId: number) => {
@@ -107,16 +105,12 @@ const App: React.FC = () => {
         return <DashboardPage onNavigateToAlerts={handleNavigateToAlerts} />;
       case 'patients':
         return <PatientsPage />;
-      case 'fall-detection':
-        return <FallDetectionPage />;
-      case 'face-recognition':
-        return <FaceRecognitionPage />;
-      case 'face-identify':
-        return <FaceIdentifyPage />;
+      case 'fall-alert':
+        return <FallAlertPage />;
+      case 'face-management':
+        return <FaceManagementPage />;
       case 'cameras':
         return <CamerasPage />;
-      case 'alerts-history':
-        return <AlertsHistoryPage />;
       case 'settings':
         return <SettingsPage />;
       default:

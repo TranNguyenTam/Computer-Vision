@@ -1,10 +1,12 @@
 import {
-  AlertTriangle,
-  Clock,
-  MapPin,
-  TrendingUp,
-  UserCheck,
-  Users
+    Activity,
+    AlertTriangle,
+    Calendar,
+    Clock,
+    MapPin,
+    TrendingUp,
+    UserCheck,
+    Users
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { alertApi, dashboardApi } from '../services/api';
@@ -81,11 +83,11 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToAlerts }) => 
             <div>
               <p className="text-sm text-slate-500">Tổng bệnh nhân</p>
               <p className="text-3xl font-semibold text-slate-800 mt-2">
-                {stats?.totalPatients.toLocaleString() || 0}
+                {(stats?.totalPatients ?? 0).toLocaleString()}
               </p>
               <p className="text-xs text-slate-400 mt-2 flex items-center gap-1">
                 <TrendingUp className="w-3 h-3" />
-                Từ database
+                Từ sơ sở dữ liệu
               </p>
             </div>
             <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center">
@@ -115,7 +117,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToAlerts }) => 
                   Xem chi tiết →
                 </button>
               ) : (
-                <p className="text-xs text-emerald-600 mt-2">Hệ thống ổn định</p>
+                <p className="text-xs text-emerald-600 mt-2"></p>
               )}
             </div>
             <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
@@ -137,6 +139,39 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToAlerts }) => 
             </div>
             <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center">
               <UserCheck className="w-6 h-6 text-slate-600" />
+            </div>
+          </div>
+        </div>
+
+        {/* Fall Detection Stats Card */}
+        <div className={`rounded-xl p-6 border transition-all ${
+          (stats?.totalFallsToday ?? 0) > 0 
+            ? 'bg-orange-50 border-orange-200' 
+            : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm'
+        }`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className={`text-sm ${(stats?.totalFallsToday ?? 0) > 0 ? 'text-orange-600' : 'text-slate-500'}`}>
+                Té ngã hôm nay
+              </p>
+              <p className={`text-3xl font-semibold mt-2 ${(stats?.totalFallsToday ?? 0) > 0 ? 'text-orange-700' : 'text-slate-800'}`}>
+                {stats?.totalFallsToday || 0}
+              </p>
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-xs text-slate-400 flex items-center gap-1">
+                  <Calendar className="w-3 h-3" />
+                  Tuần: {stats?.totalFallsThisWeek || 0}
+                </span>
+                <span className="text-xs text-slate-400">•</span>
+                <span className="text-xs text-slate-400">
+                  Tháng: {stats?.totalFallsThisMonth || 0}
+                </span>
+              </div>
+            </div>
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+              (stats?.totalFallsToday ?? 0) > 0 ? 'bg-orange-100' : 'bg-slate-100'
+            }`}>
+              <Activity className={`w-6 h-6 ${(stats?.totalFallsToday ?? 0) > 0 ? 'text-orange-600' : 'text-slate-600'}`} />
             </div>
           </div>
         </div>

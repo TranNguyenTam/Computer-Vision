@@ -92,13 +92,41 @@ public class PatientService : IPatientService
         // Count total patients
         var totalPatients = await _unitOfWork.BenhNhans.CountAsync();
         
-        // Mock data for now (can be enhanced later)
+        // Count active alerts
+        var activeAlerts = await _unitOfWork.FallAlerts.CountActiveAlertsAsync();
+        
+        // Count falls today, this week, this month
+        var fallsToday = await _unitOfWork.FallAlerts.CountFallsTodayAsync();
+        var fallsThisWeek = await _unitOfWork.FallAlerts.CountFallsThisWeekAsync();
+        var fallsThisMonth = await _unitOfWork.FallAlerts.CountFallsThisMonthAsync();
+        
+        // Get recent alerts
+        var recentAlerts = await _unitOfWork.FallAlerts.GetRecentAlertsAsync(5);
+        var recentAlertDtos = recentAlerts.Select(a => new FallAlertResponse
+        {
+            Id = a.Id,
+            PatientId = a.PatientId,
+            PatientName = a.PatientName,
+            Timestamp = a.Timestamp,
+            Location = a.Location,
+            Confidence = a.Confidence,
+            Status = a.Status,
+            HasImage = !string.IsNullOrEmpty(a.FrameData)
+        }).ToList();
+        
+        // Get recent detections
+        var recentDetections = GetRecentDetections();
+        
         return new DashboardStatsDto
         {
             TotalPatients = totalPatients,
-            PatientsDetectedToday = 0, // Will be calculated from face detections
-            ActiveAlerts = 0, // Will be calculated from alerts
-            RecentDetections = new List<RecentDetectionDto>()
+            PatientsDetectedToday = recentDetections.Count(d => d.Timestamp.Date == DateTime.UtcNow.Date),
+            ActiveAlerts = activeAlerts,
+            TotalFallsToday = fallsToday,
+            TotalFallsThisWeek = fallsThisWeek,
+            TotalFallsThisMonth = fallsThisMonth,
+            RecentAlerts = recentAlertDtos,
+            RecentDetections = recentDetections.Take(10).ToList()
         };
     }
 
