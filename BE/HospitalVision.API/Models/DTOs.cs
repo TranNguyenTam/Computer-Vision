@@ -339,3 +339,49 @@ public class PatientDetailDto
     public string? NguoiTaoId { get; set; }
     public string? NguoiCapNhatId { get; set; }
 }
+
+// =====================================================
+// DTOs from FaceImage.cs (moved here for better organization)
+// =====================================================
+
+/// <summary>
+/// Face image information with patient details
+/// </summary>
+public class FaceImageDto
+{
+    public int Id { get; set; }
+    public string MaYTe { get; set; } = string.Empty;
+    public string ImagePath { get; set; } = string.Empty;
+    public string ImageUrl { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+    public bool IsActive { get; set; }
+}
+
+/// <summary>
+/// Face recognition result with patient information
+/// </summary>
+public class FaceRecognitionResult
+{
+    public bool Recognized { get; set; }
+    public float Confidence { get; set; }
+    public string ConfidenceLevel { get; set; } = string.Empty; // "low", "medium", "high", "very_high"
+    public PatientBasicInfo? Patient { get; set; }
+    public string? Message { get; set; }
+    public bool IsInQueue { get; set; }  // Bệnh nhân có đang trong hàng đợi hôm nay không
+}
+
+/// <summary>
+/// Patient information in queue (JOIN from HangDoiPhongBan and TT_BENHNHAN)
+/// </summary>
+public class HangDoiPatientInfo
+{
+    public int Id { get; set; }  // HangDoiPhongBan_Id
+    public string MaYTe { get; set; } = string.Empty;
+    public string HoTen { get; set; } = string.Empty;
+    public DateTime? NgaySinh { get; set; }
+    public string? GioiTinh { get; set; }
+    public string? SoDienThoai { get; set; }
+    public int? SoThuTu { get; set; }
+    public string? TenPhong { get; set; }
+    public string? TrangThaiText { get; set; }
+}

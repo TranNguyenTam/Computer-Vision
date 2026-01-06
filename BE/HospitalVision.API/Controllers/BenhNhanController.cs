@@ -1,4 +1,5 @@
-using HospitalVision.API.Models;
+using HospitalVision.API.Models.DTOs;
+using HospitalVision.API.Models.Entities;
 using HospitalVision.API.Services.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
@@ -19,23 +20,15 @@ public class BenhNhanController : ControllerBase
 
     /// Lấy danh sách bệnh nhân từ bảng TT_BENHNHAN (phân trang)
     [HttpGet]
-    public async Task<ActionResult<object>> GetAll([FromQuery] int page = 1, [FromQuery] int count = 50)
+    public async Task<ActionResult<ApiResponse<object>>> GetAll([FromQuery] int page = 1, [FromQuery] int count = 50)
     {
-        try
-        {
-            // Validate parameters
-            if (page < 1) page = 1;
-            if (count < 1) count = 50;
-            if (count > 100) count = 100; // Max 100 per request
+        // Validate parameters
+        if (page < 1) page = 1;
+        if (count < 1) count = 50;
+        if (count > 100) count = 100; // Max 100 per request
 
-            var result = await _patientService.GetPatientsWithPaginationAsync(page, count);
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Lỗi khi lấy danh sách bệnh nhân");
-            return StatusCode(500, new { error = ex.Message });
-        }
+        var result = await _patientService.GetPatientsWithPaginationAsync(page, count);
+        return Ok(ApiResponse<object>.Ok(result));
     }
 
     /// Lấy thông tin bệnh nhân theo mã

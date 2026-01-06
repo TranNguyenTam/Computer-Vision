@@ -1,4 +1,4 @@
-using HospitalVision.API.Models;
+using HospitalVision.API.Models.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace HospitalVision.API.Data;

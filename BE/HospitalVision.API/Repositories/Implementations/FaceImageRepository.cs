@@ -1,5 +1,5 @@
 using HospitalVision.API.Data;
-using HospitalVision.API.Models;
+using HospitalVision.API.Models.Entities;
 using HospitalVision.API.Repositories.Interfaces;
 using Microsoft.EntityFrameworkCore;
 

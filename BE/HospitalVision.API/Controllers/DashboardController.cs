@@ -19,17 +19,17 @@ public class DashboardController : ControllerBase
 
     /// Get ra thông tin thống kê cho dashboard
     [HttpGet("stats")]
-    public async Task<ActionResult<DashboardStatsDto>> GetStats()
+    public async Task<ActionResult<ApiResponse<DashboardStatsDto>>> GetStats()
     {
         var stats = await _patientService.GetDashboardStatsAsync();
-        return Ok(stats);
+        return Ok(ApiResponse<DashboardStatsDto>.Ok(stats));
     }
 
     /// Get trạng thái hệ thống
     [HttpGet("status")]
-    public ActionResult GetStatus()
+    public ActionResult<ApiResponse<object>> GetStatus()
     {
-        return Ok(new
+        var statusData = new
         {
             status = "online",
             timestamp = DateTime.UtcNow,
@@ -40,6 +40,7 @@ public class DashboardController : ControllerBase
                 signalR = "active",
                 aiModule = "unknown" // Would need actual health check
             }
-        });
+        };
+        return Ok(ApiResponse<object>.Ok(statusData));
     }
 }

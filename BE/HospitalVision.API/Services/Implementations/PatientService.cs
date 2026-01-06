@@ -1,6 +1,6 @@
 using HospitalVision.API.Data.UnitOfWork;
-using HospitalVision.API.Models;
 using HospitalVision.API.Models.DTOs;
+using HospitalVision.API.Models.Entities;
 using HospitalVision.API.Services.Interfaces;
 
 namespace HospitalVision.API.Services.Implementations;

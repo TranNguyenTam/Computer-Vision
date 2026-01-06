@@ -5,7 +5,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
-  Download,
   Filter,
   MapPin,
   XCircle
@@ -195,12 +194,12 @@ const AlertsHistoryPage: React.FC = () => {
             </button>
           )}
 
-          <div className="ml-auto">
+          {/* <div className="ml-auto">
             <button className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors">
               <Download className="w-4 h-4" />
               Xuất báo cáo
             </button>
-          </div>
+          </div> */}
         </div>
       </div>
 

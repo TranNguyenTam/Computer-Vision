@@ -1,4 +1,4 @@
-using HospitalVision.API.Models;
+using HospitalVision.API.Models.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace HospitalVision.API.Data;
@@ -18,6 +18,9 @@ public class QmsDbContext : DbContext
     
     /// Bảng lưu lịch sử nhận diện tự động
     public DbSet<DetectionHistory> DetectionHistories => Set<DetectionHistory>();
+    
+    /// Bảng lưu cảnh báo ngã (Fall Alerts)
+    public DbSet<FallAlert> FallAlerts => Set<FallAlert>();
     
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -53,6 +56,18 @@ public class QmsDbContext : DbContext
             entity.HasIndex(e => e.MaYTe);
             entity.HasIndex(e => e.SessionDate);
             entity.HasIndex(e => new { e.MaYTe, e.SessionDate }).IsUnique(); // Mỗi người 1 lần/ngày
+        });
+        
+        // FALL_ALERTS configuration - cảnh báo ngã
+        modelBuilder.Entity<FallAlert>(entity =>
+        {
+            entity.ToTable("FALL_ALERTS");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedOnAdd();
+            entity.HasIndex(e => e.PatientId);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.Timestamp);
+            entity.HasIndex(e => new { e.Status, e.Timestamp });
         });
     }
 }

@@ -1,4 +1,4 @@
-using HospitalVision.API.Models;
+using HospitalVision.API.Models.Entities;
 
 namespace HospitalVision.API.Repositories.Interfaces;
 

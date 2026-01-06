@@ -37,6 +37,10 @@ class CameraConfig:
     transport: str = "udp"      # UDP for lower latency
     use_hw_accel: bool = False  # Hardware acceleration
     hw_decoder: str = "cuda"    # cuda, dxva2, d3d11va
+    # Camera metadata
+    id: str = "camera_01"       # Camera ID
+    name: str = "Camera"        # Camera display name
+    location: str = "Unknown"   # Camera location
 
 
 class HikvisionCamera:
@@ -105,6 +109,9 @@ class HikvisionCamera:
             transport=config.get('transport', 'tcp'),
             use_hw_accel=config.get('use_hw_accel', False),
             hw_decoder=config.get('hw_decoder', 'cuda'),
+            id=config.get('id', 'camera_01'),
+            name=config.get('name', 'Camera'),
+            location=config.get('location', config.get('name', 'Unknown')),
         )
     
     def get_rtsp_url(self, stream_type: int = None) -> str:
@@ -243,9 +250,28 @@ class HikvisionCamera:
             self.cap = None
     
     def reconnect(self) -> bool:
-        """Force reconnect to camera"""
+        """Force reconnect to camera with improved error handling"""
         logger.info("🔄 Reconnecting to camera...")
-        return self.connect(force=True)
+        
+        # Release existing connection
+        self._release_capture()
+        
+        # Wait before reconnecting
+        time.sleep(self.config.reconnect_delay)
+        
+        # Try to reconnect
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            if self.connect(force=False):
+                logger.info(f"✅ Reconnection successful (attempt {attempt + 1})")
+                return True
+            
+            if attempt < max_attempts - 1:
+                logger.warning(f"⚠️ Reconnection attempt {attempt + 1} failed, retrying...")
+                time.sleep(1)
+        
+        logger.error("❌ All reconnection attempts failed")
+        return False
     
     def disconnect(self):
         """Disconnect from camera"""
@@ -284,16 +310,27 @@ class HikvisionCamera:
         logger.info("Stopped frame capture")
     
     def _capture_loop(self):
-        """Background frame capture loop"""
+        """Background frame capture loop with improved reconnection"""
         consecutive_failures = 0
-        max_failures = 30  # ~1 second at 30fps
+        max_failures = 60  # ~2 seconds at 30fps - more tolerant
         
         while self.is_running:
             if not self.is_connected or self.cap is None:
+                logger.debug("Camera not connected, waiting...")
                 time.sleep(0.1)
                 continue
             
             try:
+                # Check if capture is still open
+                if not self.cap.isOpened():
+                    logger.warning("Capture closed unexpectedly")
+                    consecutive_failures += 1
+                    if consecutive_failures >= max_failures:
+                        self._reconnect()
+                        consecutive_failures = 0
+                    time.sleep(0.1)
+                    continue
+                
                 ret, frame = self.cap.read()
                 
                 if ret and frame is not None:
@@ -313,39 +350,52 @@ class HikvisionCamera:
                 else:
                     consecutive_failures += 1
                     if consecutive_failures >= max_failures:
-                        logger.warning("Too many frame failures, attempting reconnect...")
+                        logger.warning(f"⚠️ Too many failures ({consecutive_failures}), reconnecting...")
                         self._reconnect()
                         consecutive_failures = 0
+                    time.sleep(0.05)  # Brief pause on failure
                         
             except Exception as e:
                 logger.error(f"Capture error: {e}")
                 consecutive_failures += 1
                 if consecutive_failures >= max_failures:
+                    logger.error("Max failures reached, attempting reconnect")
                     self._reconnect()
                     consecutive_failures = 0
+                time.sleep(0.05)
     
     def _reconnect(self):
-        """Attempt to reconnect to camera"""
+        """Attempt to reconnect to camera with exponential backoff"""
         self.is_connected = False
         self.connection_attempts += 1
         
         if self.connection_attempts > self.config.max_reconnect_attempts:
-            logger.error("Max reconnection attempts reached")
+            logger.error("❌ Max reconnection attempts reached")
             self._handle_error("Max reconnection attempts reached")
             self.is_running = False
             return
         
-        logger.info(f"Reconnecting... (attempt {self.connection_attempts})")
+        logger.info(f"🔄 Reconnecting... (attempt {self.connection_attempts}/{self.config.max_reconnect_attempts})")
         
+        # Clean up existing connection
         if self.cap:
-            self.cap.release()
+            try:
+                self.cap.release()
+            except:
+                pass
+            self.cap = None
         
-        time.sleep(self.config.reconnect_delay)
+        # Exponential backoff: 3s, 6s, 9s...
+        delay = min(self.config.reconnect_delay * self.connection_attempts, 15)
+        logger.info(f"Waiting {delay}s before reconnect...")
+        time.sleep(delay)
         
-        if self.connect():
-            logger.info("Reconnection successful")
+        # Try to reconnect
+        if self.connect(force=False):
+            logger.info("✅ Reconnection successful!")
+            self.connection_attempts = 0  # Reset counter on success
         else:
-            logger.warning("Reconnection failed, will retry...")
+            logger.warning(f"⚠️ Reconnection attempt {self.connection_attempts} failed, will retry...")
     
     def read(self) -> Tuple[bool, Optional[np.ndarray]]:
         """

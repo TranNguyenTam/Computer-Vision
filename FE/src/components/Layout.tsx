@@ -1,7 +1,6 @@
 import {
   Activity,
   AlertTriangle,
-  Bell,
   Camera,
   ClipboardList,
   Home,
@@ -9,8 +8,6 @@ import {
   Scan,
   UserCircle,
   Users,
-  Volume2,
-  VolumeX,
   Wifi,
   WifiOff,
   X
@@ -150,7 +147,7 @@ const Layout: React.FC<LayoutProps> = ({
             </h2>
 
             <div className="flex items-center gap-3">
-              {/* Sound toggle */}
+              {/* Sound toggle
               {onToggleSound && (
                 <button
                   onClick={onToggleSound}
@@ -163,9 +160,9 @@ const Layout: React.FC<LayoutProps> = ({
                 >
                   {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
                 </button>
-              )}
+              )} */}
 
-              {/* Alert bell */}
+              {/* Alert bell
               <button className="relative p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg">
                 <Bell className="w-5 h-5" />
                 {activeAlerts > 0 && (
@@ -173,7 +170,7 @@ const Layout: React.FC<LayoutProps> = ({
                     {activeAlerts}
                   </span>
                 )}
-              </button>
+              </button> */}
 
               {/* User */}
               <div className="flex items-center gap-2">

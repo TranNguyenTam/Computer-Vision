@@ -76,19 +76,19 @@ export const alertApi = {
   // Lấy cảnh báo đang hoạt động
   getActiveAlerts: async (): Promise<FallAlert[]> => {
     const response = await api.get('/alerts/active');
-    return response.data;
+    return response.data.data || response.data; // Support both ApiResponse and direct array
   },
 
   // Lấy tất cả cảnh báo (phân trang)
   getAllAlerts: async (page = 1, pageSize = 20): Promise<FallAlert[]> => {
     const response = await api.get('/alerts', { params: { page, pageSize } });
-    return response.data;
+    return response.data.data || response.data; // Support both formats
   },
 
   // Lấy chi tiết cảnh báo
   getAlert: async (alertId: number): Promise<FallAlert> => {
     const response = await api.get(`/alerts/${alertId}`);
-    return response.data;
+    return response.data.data || response.data; // Support both formats
   },
 
   // Tạo cảnh báo té ngã mới
@@ -99,7 +99,7 @@ export const alertApi = {
     frameData?: string;
   }): Promise<FallAlert> => {
     const response = await api.post('/fall-alert', data);
-    return response.data;
+    return response.data.data || response.data; // Support both formats
   },
 
   // Xác nhận cảnh báo

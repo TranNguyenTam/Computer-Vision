@@ -1,6 +1,7 @@
-using HospitalVision.API.Models;
 using HospitalVision.API.Models.DTOs;
+using HospitalVision.API.Models.Entities;
 using HospitalVision.API.Services.Interfaces;
+using HospitalVision.API.Data.UnitOfWork;
 
 namespace HospitalVision.API.Services.Implementations;
 
@@ -8,27 +9,23 @@ public class AlertService : IAlertService
 {
     private readonly IPatientService _patientService;
     private readonly INotificationService _notificationService;
+    private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<AlertService> _logger;
-    
-    private static int _nextAlertId = 1;
-    
-    // Shared static alerts list (temporary in-memory storage)
-    private static readonly List<FallAlertMemory> _alerts = new();
     
     public AlertService(
         IPatientService patientService,
         INotificationService notificationService,
+        IUnitOfWork unitOfWork,
         ILogger<AlertService> logger)
     {
         _patientService = patientService;
         _notificationService = notificationService;
+        _unitOfWork = unitOfWork;
         _logger = logger;
     }
 
     public async Task<FallAlertResponse> CreateFallAlertAsync(FallAlertRequest request)
     {
-        var alertId = _nextAlertId++;
-        
         // Try to get patient name from BenhNhan table
         string? patientName = null;
         if (!string.IsNullOrEmpty(request.PatientId) && int.TryParse(request.PatientId, out int benhNhanId))
@@ -37,9 +34,8 @@ public class AlertService : IAlertService
             patientName = benhNhan?.TenBenhNhan;
         }
         
-        var alert = new FallAlertMemory
+        var alert = new FallAlert
         {
-            Id = alertId,
             PatientId = request.PatientId ?? "",
             PatientName = patientName ?? "Unknown",
             Timestamp = request.Timestamp != default ? request.Timestamp : DateTime.UtcNow,
@@ -49,7 +45,8 @@ public class AlertService : IAlertService
             FrameData = request.FrameData
         };
 
-        _alerts.Add(alert);
+        await _unitOfWork.FallAlerts.AddAsync(alert);
+        await _unitOfWork.SaveChangesAsync();
 
         _logger.LogWarning("FALL ALERT created: ID={AlertId}, Patient={PatientId}, Location={Location}",
             alert.Id, alert.PatientId, alert.Location);
@@ -72,62 +69,57 @@ public class AlertService : IAlertService
         return response;
     }
 
-    public Task<FallAlertMemory?> GetAlertAsync(int alertId)
+    public async Task<FallAlert?> GetAlertAsync(int alertId)
     {
-        var alert = _alerts.FirstOrDefault(a => a.Id == alertId);
-        return Task.FromResult(alert);
+        return await _unitOfWork.FallAlerts.GetByIdAsync(alertId);
     }
 
-    public Task<List<FallAlertResponse>> GetActiveAlertsAsync()
+    public async Task<List<FallAlertResponse>> GetActiveAlertsAsync()
     {
-        var alerts = _alerts
-            .Where(a => a.Status == "Active" || a.Status == "Acknowledged")
-            .OrderByDescending(a => a.Timestamp)
-            .Select(a => new FallAlertResponse
-            {
-                Id = a.Id,
-                PatientId = a.PatientId,
-                PatientName = a.PatientName,
-                Timestamp = a.Timestamp,
-                Location = a.Location,
-                Confidence = a.Confidence,
-                Status = a.Status,
-                HasImage = !string.IsNullOrEmpty(a.FrameData),
-                FrameData = a.FrameData
-            })
-            .ToList();
+        var alerts = await _unitOfWork.FallAlerts.GetActiveAlertsAsync();
         
-        return Task.FromResult(alerts);
+        return alerts.Select(a => new FallAlertResponse
+        {
+            Id = a.Id,
+            PatientId = a.PatientId,
+            PatientName = a.PatientName,
+            Timestamp = a.Timestamp,
+            Location = a.Location,
+            Confidence = a.Confidence,
+            Status = a.Status,
+            HasImage = !string.IsNullOrEmpty(a.FrameData),
+            FrameData = a.FrameData
+        }).ToList();
     }
 
-    public Task<List<FallAlertResponse>> GetAllAlertsAsync(int page = 1, int pageSize = 20)
+    public async Task<List<FallAlertResponse>> GetAllAlertsAsync(int page = 1, int pageSize = 20)
     {
-        var alerts = _alerts
-            .OrderByDescending(a => a.Timestamp)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(a => new FallAlertResponse
-            {
-                Id = a.Id,
-                PatientId = a.PatientId,
-                PatientName = a.PatientName,
-                Timestamp = a.Timestamp,
-                Location = a.Location,
-                Confidence = a.Confidence,
-                Status = a.Status,
-                HasImage = !string.IsNullOrEmpty(a.FrameData),
-                FrameData = a.FrameData
-            })
-            .ToList();
+        var alerts = await _unitOfWork.FallAlerts.GetAlertsPagedAsync(page, pageSize);
         
-        return Task.FromResult(alerts);
+        return alerts.Select(a => new FallAlertResponse
+        {
+            Id = a.Id,
+            PatientId = a.PatientId,
+            PatientName = a.PatientName,
+            Timestamp = a.Timestamp,
+            Location = a.Location,
+            Confidence = a.Confidence,
+            Status = a.Status,
+            HasImage = !string.IsNullOrEmpty(a.FrameData),
+            FrameData = a.FrameData
+        }).ToList();
     }
 
-    public Task<bool> UpdateAlertStatusAsync(int alertId, UpdateAlertStatusRequest request)
+    public async Task<int> CountAllAlertsAsync()
     {
-        var alert = _alerts.FirstOrDefault(a => a.Id == alertId);
+        return await _unitOfWork.FallAlerts.CountAllAlertsAsync();
+    }
+
+    public async Task<bool> UpdateAlertStatusAsync(int alertId, UpdateAlertStatusRequest request)
+    {
+        var alert = await _unitOfWork.FallAlerts.GetByIdAsync(alertId);
         if (alert == null)
-            return Task.FromResult(false);
+            return false;
 
         alert.Status = request.Status;
         alert.Notes = request.Notes;
@@ -138,12 +130,15 @@ public class AlertService : IAlertService
             alert.ResolvedAt = DateTime.UtcNow;
         }
 
+        _unitOfWork.FallAlerts.Update(alert);
+        await _unitOfWork.SaveChangesAsync();
+
         _logger.LogInformation("Alert {AlertId} status updated to {Status}", alertId, request.Status);
 
         // Notify clients about status update (fire and forget)
         _ = _notificationService.SendAlertStatusUpdateAsync(alertId, request.Status);
 
-        return Task.FromResult(true);
+        return true;
     }
 
     public Task<bool> AcknowledgeAlertAsync(int alertId, string acknowledgedBy)
@@ -165,4 +160,3 @@ public class AlertService : IAlertService
         });
     }
 }
-

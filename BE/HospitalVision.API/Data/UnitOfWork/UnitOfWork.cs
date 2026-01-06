@@ -1,4 +1,4 @@
-using HospitalVision.API.Models;
+using HospitalVision.API.Models.Entities;
 using HospitalVision.API.Repositories.Implementations;
 using HospitalVision.API.Repositories.Interfaces;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -19,6 +19,7 @@ public class UnitOfWork : IUnitOfWork
     private IFaceImageRepository? _faceImages;
     private IHangDoiPhongBanRepository? _hangDoiPhongBans;
     private IRepository<DetectionHistory>? _detectionHistories;
+    private IFallAlertRepository? _fallAlerts;
 
     public UnitOfWork(QmsDbContext qmsContext, HospitalDbContext hospitalContext)
     {
@@ -38,6 +39,9 @@ public class UnitOfWork : IUnitOfWork
 
     public IRepository<DetectionHistory> DetectionHistories =>
         _detectionHistories ??= new Repository<DetectionHistory>(_qmsContext);
+
+    public IFallAlertRepository FallAlerts =>
+        _fallAlerts ??= new FallAlertRepository(_qmsContext);
 
     // Transaction management (primarily for QMS context - Hospital is read-only)
     public async Task<int> SaveChangesAsync()

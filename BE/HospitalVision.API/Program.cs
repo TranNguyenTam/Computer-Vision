@@ -1,6 +1,7 @@
 using HospitalVision.API.Data;
 using HospitalVision.API.Data.UnitOfWork;
 using HospitalVision.API.Hubs;
+using HospitalVision.API.Middleware;
 using HospitalVision.API.Repositories.Implementations;
 using HospitalVision.API.Repositories.Interfaces;
 using HospitalVision.API.Services.Implementations;
@@ -14,22 +15,27 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddOpenApi();
 
+// Add Exception Handler
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddProblemDetails();
+
 // Add SignalR for real-time communication
 builder.Services.AddSignalR();
 
 // Add CORS
+var allowedOrigins = builder.Configuration.GetValue<string>("CorsSettings:AllowedOrigins") 
+    ?? Environment.GetEnvironmentVariable("ALLOWED_ORIGINS") 
+    ?? "http://localhost:3000,http://localhost:5173";
+
+var origins = allowedOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries)
+    .Select(o => o.Trim())
+    .ToArray();
+
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
+    options.AddDefaultPolicy(policy =>
     {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
-    });
-    
-    options.AddPolicy("AllowFrontend", policy =>
-    {
-        policy.WithOrigins("http://localhost:3000", "http://localhost:5173")
+        policy.WithOrigins(origins)
               .AllowAnyMethod()
               .AllowAnyHeader()
               .AllowCredentials();
@@ -90,6 +96,8 @@ Console.WriteLine("✅ Clean Architecture registered: Repositories → UnitOfWor
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
+app.UseExceptionHandler();
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
@@ -100,7 +108,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-app.UseCors("AllowFrontend");
+app.UseCors(); // Use default policy
 app.UseAuthorization();
 
 app.MapControllers();

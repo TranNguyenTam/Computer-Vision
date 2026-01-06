@@ -48,6 +48,7 @@ camera:
   cameras:
     - id: "main_entrance"
       name: "Lối vào chính"
+      location: "Lối vào chính - Tầng 1" # Vị trí cụ thể của camera
       ip: "192.168.1.6"
       stream_path: "/Streaming/Channels/101"
       enabled: true

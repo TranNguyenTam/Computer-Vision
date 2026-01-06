@@ -968,8 +968,8 @@ class YOLOFallDetector:
             self.fall_confirmed = False
             self.was_falling_before_missing = False
             
-            cv2.putText(frame, "NO PERSON DETECTED", 
-                       (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            # cv2.putText(frame, "NO PERSON DETECTED", 
+            #            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
             
             return {
                 'fall_detected': False,

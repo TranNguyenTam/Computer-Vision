@@ -1,14 +1,14 @@
 import {
-    AlertCircle,
-    AlertTriangle,
-    CheckCircle,
-    Clock,
-    Image,
-    MapPin,
-    RefreshCw,
-    User,
-    Video,
-    XCircle
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle,
+  Clock,
+  Image,
+  MapPin,
+  RefreshCw,
+  User,
+  Video,
+  XCircle
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { alertApi } from '../services/api';
@@ -25,6 +25,11 @@ const FallDetectionPage: React.FC = () => {
   const [selectedAlert, setSelectedAlert] = useState<FallAlert | null>(null);
   const [cameraStatus, setCameraStatus] = useState<'loading' | 'online' | 'offline'>('loading');
   const [streamKey, setStreamKey] = useState(Date.now());
+  const [cameraInfo, setCameraInfo] = useState<{
+    name: string;
+    location: string;
+    id: string;
+  } | null>(null);
 
   const playAlertSound = useCallback(() => {
     if (soundEnabled) { 
@@ -83,7 +88,15 @@ const FallDetectionPage: React.FC = () => {
       try {
         const response = await fetch(`${AI_SERVER_URL}/api/camera/status`);
         if (response.ok) {
+          const data = await response.json();
           setCameraStatus('online');
+          if (data.camera) {
+            setCameraInfo({
+              name: data.camera.name || 'Unknown',
+              location: data.camera.location || 'Unknown',
+              id: data.camera.id || 'unknown'
+            });
+          }
         } else {
           setCameraStatus('offline');
         }
@@ -228,7 +241,7 @@ const FallDetectionPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* <div className="flex items-center gap-2">
           <button
             onClick={() => setShowVideoStream(!showVideoStream)}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
@@ -240,7 +253,7 @@ const FallDetectionPage: React.FC = () => {
             <Video className="w-4 h-4" />
             {showVideoStream ? 'Ẩn camera' : 'Hiện camera'}
           </button>
-        </div>
+        </div> */}
       </div>
 
       {/* Video Stream Section */}
@@ -249,7 +262,16 @@ const FallDetectionPage: React.FC = () => {
           <div className="p-4 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Video className="w-5 h-5 text-blue-600" />
-              <h3 className="font-semibold text-slate-800">Camera giám sát té ngã (AI)</h3>
+              <div>
+                <h3 className="font-semibold text-slate-800">
+                  {cameraInfo ? cameraInfo.name : 'Camera giám sát té ngã (AI)'}
+                </h3>
+                {cameraInfo && (
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    📍 {cameraInfo.location}
+                  </p>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <span className={`flex items-center gap-1 text-sm ${
@@ -494,8 +516,9 @@ const FallDetectionPage: React.FC = () => {
         <button
           onClick={async () => {
             try {
+              const location = cameraInfo?.location || 'Phòng khám số 1';
               await alertApi.createFallAlert({
-                location: 'Phòng khám số 1',
+                location: location,
                 confidence: 0.85,
               });
               playAlertSound();
@@ -506,7 +529,7 @@ const FallDetectionPage: React.FC = () => {
           }}
           className="px-4 py-2 text-sm font-medium bg-slate-800 text-white rounded-lg hover:bg-slate-700 transition-colors"
         >
-          Tạo cảnh báo test
+          Tạo cảnh báo test {cameraInfo && `(${cameraInfo.location})`}
         </button>
       </div>
 

@@ -43,6 +43,7 @@ is_running = False
 current_frame = None
 raw_frame = None  # Frame gốc không có AI overlay
 frame_lock = threading.Lock()
+current_camera_config = None  # Lưu config của camera đang sử dụng
 
 # AI settings
 ai_settings = {
@@ -72,7 +73,7 @@ def load_config():
 
 def initialize_camera():
     """Initialize camera and AI modules"""
-    global camera, fall_detector, face_recognizer
+    global camera, fall_detector, face_recognizer, current_camera_config
     
     from camera_manager import HikvisionCamera, load_camera_configs
     from yolo_fall_detector import YOLOFallDetector
@@ -100,7 +101,8 @@ def initialize_camera():
     # Initialize camera
     camera_configs = load_camera_configs(str(Path(__file__).parent / "config" / "config.yaml"))
     if camera_configs:
-        camera = HikvisionCamera(camera_configs[0])
+        current_camera_config = camera_configs[0]  # Lưu config của camera đầu tiên
+        camera = HikvisionCamera(current_camera_config)
         if camera.connect():
             logger.info("✅ Camera connected")
         else:
@@ -133,8 +135,8 @@ def initialize_camera():
     face_config['backend_url'] = config.get('backend', {}).get('url', 'http://localhost:5000')
     face_config['auto_detection_enabled'] = True
     face_config['min_face_size'] = 80  # Minimum face width (px) - lowered for ~2-3m distance
-    face_config['camera_id'] = config.get('camera', {}).get('id', 'camera_01')
-    face_config['location'] = config.get('camera', {}).get('location', 'Cổng chính')
+    face_config['camera_id'] = current_camera_config.id if current_camera_config else 'camera_01'
+    face_config['location'] = current_camera_config.location if current_camera_config else 'Cổng chính'
     
     if USE_EMBEDDING:
         face_recognizer = FaceEmbedding(face_config)
@@ -155,7 +157,8 @@ def process_frames():
     frame_count = 0
     fps_start = time.time()
     error_count = 0
-    max_errors = 10  # Max consecutive errors before reconnect
+    max_errors = 30  # Tăng lên 30 để tránh reconnect quá sớm (~1 giây @ 30fps)
+    reconnect_cooldown = 0  # Thời gian chờ sau reconnect
     
     while is_running:
         try:
@@ -163,26 +166,39 @@ def process_frames():
                 time.sleep(0.1)
                 continue
             
+            # Skip reconnect cooldown period
+            if reconnect_cooldown > 0:
+                reconnect_cooldown -= 1
+                time.sleep(0.033)  # ~30fps
+                continue
+            
             # IMPORTANT: Flush buffer to get latest frame and reduce latency
             # Read multiple frames quickly to skip buffered old frames
-            if camera.cap:
+            if camera.cap and camera.cap.isOpened():
                 for _ in range(2):  # Skip 2 buffered frames
                     camera.cap.grab()
             
             ret, frame = camera.read()
             if not ret or frame is None:
                 error_count += 1
+                logger.debug(f"Frame read failed ({error_count}/{max_errors})")
+                
                 if error_count > max_errors:
-                    logger.warning("Too many frame errors, attempting reconnect...")
-                    camera.reconnect()  # Use reconnect() instead of connect()
-                    error_count = 0
-                    time.sleep(1)  # Wait a bit after reconnect
-                time.sleep(0.1)
+                    logger.warning("⚠️ Too many frame errors, attempting reconnect...")
+                    if camera.reconnect():
+                        logger.info("✅ Reconnect successful!")
+                        error_count = 0
+                        reconnect_cooldown = 30  # Wait 30 frames after reconnect
+                    else:
+                        logger.error("❌ Reconnect failed, will retry...")
+                        error_count = max_errors - 5  # Retry sooner
+                    time.sleep(0.5)  # Brief pause
+                time.sleep(0.05)
                 continue
             
             error_count = 0  # Reset on success
             frame_count += 1
-            
+
             # Keep ORIGINAL frame at full resolution (1920x1080) for high quality stream
             original_frame = frame.copy()
             
@@ -223,9 +239,14 @@ def process_frames():
                                 frame_data = base64.b64encode(fall_event.frame_data).decode('utf-8')
                             
                             backend_url = load_config().get('backend', {}).get('url', 'http://localhost:5000')
+                            # Lấy location từ camera đang sử dụng
+                            camera_location = 'Không xác định'
+                            if current_camera_config:
+                                camera_location = current_camera_config.location
+                            
                             alert_data = {
                                 'patientId': None,  # Unknown patient
-                                'location': load_config().get('camera', {}).get('location', 'Camera 1'),
+                                'location': camera_location,
                                 'confidence': result.get('confidence', 0.9),
                                 'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
                                 'frameData': frame_data
@@ -430,12 +451,37 @@ def get_stats():
 
 @app.route('/api/camera/status')
 def camera_status():
-    """Get camera connection status"""
+    """Get camera connection status with location info"""
+    camera_info = {}
+    if current_camera_config:
+        camera_info = {
+            "id": current_camera_config.id,
+            "name": current_camera_config.name,
+            "location": current_camera_config.location,
+            "ip": current_camera_config.ip
+        }
+    
     return jsonify({
         "connected": camera is not None and camera.is_connected if camera else False,
         "running": is_running,
         "settings": ai_settings,
-        "stats": stats
+        "stats": stats,
+        "camera": camera_info
+    })
+
+
+@app.route('/api/camera/info')
+def camera_info():
+    """Get current camera information including location"""
+    if current_camera_config is None:
+        return jsonify({"error": "No camera configured"}), 404
+    
+    return jsonify({
+        "id": current_camera_config.id,
+        "name": current_camera_config.name,
+        "location": current_camera_config.location,
+        "ip": current_camera_config.ip,
+        "enabled": True
     })
 
 

@@ -1,5 +1,5 @@
-using HospitalVision.API.Models;
 using HospitalVision.API.Models.DTOs;
+using HospitalVision.API.Models.Entities;
 
 namespace HospitalVision.API.Services.Interfaces;
 
