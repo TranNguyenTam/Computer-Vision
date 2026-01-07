@@ -4,7 +4,8 @@ import { NotificationToast } from './components/NotificationCenter';
 import { useSignalR } from './hooks/useSignalR';
 import CamerasPage from './pages/CamerasPage';
 import DashboardPage from './pages/DashboardPage';
-import FaceManagementPage from './pages/FaceManagementPage';
+import FaceIdentifyPage from './pages/FaceIdentifyPage';
+import FaceRecognitionPage from './pages/FaceRecognitionPage';
 import FallAlertPage from './pages/FallAlertPage';
 import PatientsPage from './pages/PatientsPage';
 import SettingsPage from './pages/SettingsPage';
@@ -107,8 +108,10 @@ const App: React.FC = () => {
         return <PatientsPage />;
       case 'fall-alert':
         return <FallAlertPage />;
-      case 'face-management':
-        return <FaceManagementPage />;
+      case 'face-recognition':
+        return <FaceRecognitionPage />;
+      case 'face-identify':
+        return <FaceIdentifyPage />;
       case 'cameras':
         return <CamerasPage />;
       case 'settings':

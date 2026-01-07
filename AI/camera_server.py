@@ -60,7 +60,8 @@ stats = {
     "falls_detected": 0,
     "faces_recognized": 0,
     "state": "unknown",
-    "recognized_persons": []
+    "recognized_persons": [],
+    "last_recognition_time": 0
 }
 
 
@@ -289,7 +290,7 @@ def process_frames():
                             'persons': stats["recognized_persons"]
                         })
                     else:
-                        # Clear recognized persons when no face detected
+                        # Clear recognized persons when no face recognized
                         stats["recognized_persons"] = []
             
             # Calculate FPS
@@ -519,11 +520,22 @@ def reset_detections():
 @app.route('/api/faces/current-detection')
 def current_detection():
     """Get currently detected faces (realtime status)"""
-    return jsonify({
-        "has_detection": len(stats.get("recognized_persons", [])) > 0,
-        "persons": stats.get("recognized_persons", []),
-        "timestamp": time.time()
-    })
+    persons = stats.get("recognized_persons", [])
+    
+    # Return detection object for frontend compatibility
+    if persons:
+        # Get the first detected person
+        person = persons[0]
+        detection = {
+            "id": int(time.time() * 1000),  # Generate unique ID
+            "maYTe": person.get("id"),  # Changed from person_id to id
+            "patientName": person.get("name", person.get("id")),
+            "confidence": person.get("confidence", 0),  # Changed from similarity to confidence
+            "detectedAt": time.strftime("%Y-%m-%dT%H:%M:%S")
+        }
+        return jsonify({"detection": detection})
+    else:
+        return jsonify({"detection": None})
 
 
 @app.route('/api/faces', methods=['GET'])

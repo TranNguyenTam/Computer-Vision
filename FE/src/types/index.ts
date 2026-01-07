@@ -144,8 +144,9 @@ export interface SystemStatus {
 export type PageType = 
   | 'dashboard' 
   | 'patients' 
-  | 'fall-alert'       // Gộp fall-detection + alerts-history
-  | 'face-management'  // Gộp face-recognition + face-identify
+  | 'fall-alert'         // Gộp fall-detection + alerts-history
+  | 'face-recognition'   // Đăng ký khuôn mặt
+  | 'face-identify'      // Nhận diện khuôn mặt
   | 'cameras' 
   | 'settings';
 

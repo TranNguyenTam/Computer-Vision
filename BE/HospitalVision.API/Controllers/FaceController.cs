@@ -199,12 +199,12 @@ public class FaceController : ControllerBase
         try
         {
             var embeddings = await _faceService.GetAllEmbeddingsAsync();
-            return Ok(embeddings);
+            return Ok(new { success = true, data = embeddings });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting embeddings");
-            return StatusCode(500, new { error = "Internal server error" });
+            return StatusCode(500, new { success = false, error = "Internal server error" });
         }
     }
 
