@@ -145,7 +145,6 @@ export type PageType =
   | 'face-recognition'
   | 'face-identify'
   | 'cameras' 
-  | 'alerts-history' 
   | 'settings';
 
 export interface NavItem {

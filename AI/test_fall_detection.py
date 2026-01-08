@@ -210,7 +210,7 @@ def test_fall_detection(video_path, debug=False, save_output=False):
                 # Display metrics
                 cv2.putText(annotated_frame, f"Angle: {angle:.1f} deg", 
                            (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
-                y_offset += 25
+                y_offset +=  25
                 cv2.putText(annotated_frame, f"V.Speed: {vertical_speed:.3f}", 
                            (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
                 y_offset += 25

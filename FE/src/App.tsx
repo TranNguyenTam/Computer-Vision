@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Layout from './components/Layout';
 import { NotificationToast } from './components/NotificationCenter';
 import { useSignalR } from './hooks/useSignalR';
-import AlertsHistoryPage from './pages/AlertsHistoryPage';
 import CamerasPage from './pages/CamerasPage';
 import DashboardPage from './pages/DashboardPage';
 import FaceIdentifyPage from './pages/FaceIdentifyPage';
@@ -115,8 +114,6 @@ const App: React.FC = () => {
         return <FaceIdentifyPage />;
       case 'cameras':
         return <CamerasPage />;
-      case 'alerts-history':
-        return <AlertsHistoryPage />;
       case 'settings':
         return <SettingsPage />;
       default:

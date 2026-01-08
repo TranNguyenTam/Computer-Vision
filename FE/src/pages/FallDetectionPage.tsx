@@ -1,8 +1,11 @@
 import {
-    AlertCircle,
     AlertTriangle,
+    Calendar,
     CheckCircle,
+    ChevronLeft,
+    ChevronRight,
     Clock,
+    Filter,
     Image,
     MapPin,
     RefreshCw,
@@ -17,6 +20,7 @@ import { FallAlert } from '../types';
 const AI_SERVER_URL = import.meta.env.VITE_AI_URL || 'http://localhost:8000';
 
 const FallDetectionPage: React.FC = () => {
+  // Active Alerts States
   const [activeAlerts, setActiveAlerts] = useState<FallAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -25,6 +29,16 @@ const FallDetectionPage: React.FC = () => {
   const [selectedAlert, setSelectedAlert] = useState<FallAlert | null>(null);
   const [cameraStatus, setCameraStatus] = useState<'loading' | 'online' | 'offline'>('loading');
   const [streamKey, setStreamKey] = useState(Date.now());
+  const [retryCount, setRetryCount] = useState(0);
+  
+  // History States
+  const [historyAlerts, setHistoryAlerts] = useState<FallAlert[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(20);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [dateFilter, setDateFilter] = useState<string>('');
+  const [viewMode, setViewMode] = useState<'active' | 'history'>('active');
 
   const playAlertSound = useCallback(() => {
     if (soundEnabled) { 
@@ -55,6 +69,18 @@ const FallDetectionPage: React.FC = () => {
     }
   }, []);
 
+  const fetchHistoryAlerts = useCallback(async () => {
+    try {
+      setHistoryLoading(true);
+      const data = await alertApi.getAllAlerts(page, pageSize);
+      setHistoryAlerts(data);
+    } catch (error) {
+      console.error('Error fetching history alerts:', error);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [page, pageSize]);
+
   // Configure AI settings on mount - Enable Fall Detection, Disable Face Recognition
   useEffect(() => {
     const configureAI = async () => {
@@ -77,6 +103,9 @@ const FallDetectionPage: React.FC = () => {
 
   useEffect(() => {
     fetchAlerts();
+    if (viewMode === 'history') {
+      fetchHistoryAlerts();
+    }
     
     // Check AI Server status
     const checkCameraStatus = async () => {
@@ -95,6 +124,11 @@ const FallDetectionPage: React.FC = () => {
     checkCameraStatus();
     const statusInterval = setInterval(checkCameraStatus, 5000);
     
+    // Auto refresh stream every 30 seconds to prevent stale connection
+    const streamRefreshInterval = setInterval(() => {
+      setStreamKey(Date.now());
+    }, 30000);
+    
     // SignalR realtime updates
     import('../services/signalr').then(({ default: signalRService }) => {
       signalRService.connect().then(() => {
@@ -109,6 +143,10 @@ const FallDetectionPage: React.FC = () => {
             return [alert, ...prev];
           });
           playAlertSound();
+          // Refresh history if in history mode
+          if (viewMode === 'history') {
+            fetchHistoryAlerts();
+          }
         });
         
         // Listen for status updates
@@ -118,6 +156,10 @@ const FallDetectionPage: React.FC = () => {
               alert.id === data.alertId ? { ...alert, status: data.status as FallAlert['status'] } : alert
             ).filter(a => a.status !== 'Resolved' && a.status !== 'FalsePositive')
           );
+          // Refresh history if in history mode
+          if (viewMode === 'history') {
+            fetchHistoryAlerts();
+          }
         });
       }).catch(err => {
         console.error('SignalR connection failed:', err);
@@ -129,8 +171,9 @@ const FallDetectionPage: React.FC = () => {
     return () => {
       clearInterval(interval);
       clearInterval(statusInterval);
+      clearInterval(streamRefreshInterval);
     };
-  }, [fetchAlerts, playAlertSound]);
+  }, [fetchAlerts, fetchHistoryAlerts, playAlertSound, viewMode]);
 
   const handleAcknowledge = async (alertId: number) => {
     try {
@@ -184,6 +227,16 @@ const FallDetectionPage: React.FC = () => {
     return date.toLocaleString('vi-VN');
   };
 
+  const formatDateTime = (timestamp: string) => {
+    return new Date(timestamp).toLocaleString('vi-VN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Active':
@@ -201,14 +254,52 @@ const FallDetectionPage: React.FC = () => {
         return 'Đang hoạt động';
       case 'Acknowledged':
         return 'Đã xác nhận';
+      case 'Resolved':
+        return 'Đã xử lý';
+      case 'FalsePositive':
+        return 'Cảnh báo sai';
       default:
         return status;
     }
   };
 
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'Active':
+        return <AlertTriangle className="w-5 h-5 text-red-500" />;
+      case 'Acknowledged':
+        return <Clock className="w-5 h-5 text-yellow-500" />;
+      case 'Resolved':
+        return <CheckCircle className="w-5 h-5 text-green-500" />;
+      case 'FalsePositive':
+        return <XCircle className="w-5 h-5 text-gray-500" />;
+      default:
+        return <AlertTriangle className="w-5 h-5 text-gray-500" />;
+    }
+  };
+
+  // Filter history alerts
+  const filteredAlerts = historyAlerts.filter((alert) => {
+    if (statusFilter !== 'all' && alert.status !== statusFilter) return false;
+    if (dateFilter) {
+      const alertDate = new Date(alert.timestamp).toISOString().split('T')[0];
+      if (alertDate !== dateFilter) return false;
+    }
+    return true;
+  });
+
+  // History stats
+  const totalAlerts = historyAlerts.length;
+  const resolvedAlerts = historyAlerts.filter((a) => a.status === 'Resolved').length;
+  const falsePositives = historyAlerts.filter((a) => a.status === 'FalsePositive').length;
+  const avgConfidence =
+    historyAlerts.length > 0
+      ? Math.round((historyAlerts.reduce((sum, a) => sum + a.confidence, 0) / historyAlerts.length) * 100)
+      : 0;
+
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header with View Mode Selector */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${activeAlerts.length > 0 ? 'bg-red-50' : 'bg-emerald-50'}`}>
@@ -228,287 +319,469 @@ const FallDetectionPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* View Mode Toggle */}
+        <div className="flex items-center gap-2 bg-slate-100 rounded-lg p-1">
           <button
-            onClick={() => setShowVideoStream(!showVideoStream)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-              showVideoStream
-                ? 'bg-blue-500 text-white hover:bg-blue-600'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            onClick={() => setViewMode('active')}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              viewMode === 'active'
+                ? 'bg-white text-slate-800 shadow-sm'
+                : 'text-slate-600 hover:text-slate-800'
             }`}
           >
-            <Video className="w-4 h-4" />
-            {showVideoStream ? 'Ẩn camera' : 'Hiện camera'}
+            Cảnh báo hoạt động
+          </button>
+          <button
+            onClick={() => {
+              setViewMode('history');
+              fetchHistoryAlerts();
+            }}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              viewMode === 'history'
+                ? 'bg-white text-slate-800 shadow-sm'
+                : 'text-slate-600 hover:text-slate-800'
+            }`}
+          >
+            Lịch sử cảnh báo
           </button>
         </div>
       </div>
 
-      {/* Video Stream Section */}
-      {showVideoStream && (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Video className="w-5 h-5 text-blue-600" />
-              <h3 className="font-semibold text-slate-800">Camera giám sát té ngã (AI)</h3>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className={`flex items-center gap-1 text-sm ${
-                cameraStatus === 'online' ? 'text-emerald-600' : 
-                cameraStatus === 'offline' ? 'text-red-600' : 'text-slate-400'
-              }`}>
-                <span className={`w-2 h-2 rounded-full ${
-                  cameraStatus === 'online' ? 'bg-emerald-500 animate-pulse' : 
-                  cameraStatus === 'offline' ? 'bg-red-500' : 'bg-slate-400'
-                }`}></span>
-                {cameraStatus === 'online' ? 'Đang hoạt động' : 
-                 cameraStatus === 'offline' ? 'Không kết nối' : 'Đang kiểm tra...'}
-              </span>
-              <button
-                onClick={() => setStreamKey(Date.now())}
-                className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
-                title="Làm mới stream"
-              >
-                <RefreshCw className="w-4 h-4 text-slate-500" />
-              </button>
-            </div>
-          </div>
-          <div className="aspect-video bg-slate-900 flex items-center justify-center relative">
-            {cameraStatus === 'online' ? (
-              <img
-                key={streamKey}
-                src={`${AI_SERVER_URL}/api/stream?t=${streamKey}`}
-                alt="Fall Detection Stream"
-                className="w-full h-full object-contain"
-                onError={() => setCameraStatus('offline')}
-              />
-            ) : cameraStatus === 'offline' ? (
-              <div className="flex flex-col items-center justify-center text-slate-400 p-8">
-                <Video className="w-12 h-12 mb-3 opacity-50" />
-                <p className="text-sm font-medium">Không thể kết nối camera</p>
-                <p className="text-xs mt-1">Kiểm tra AI Server ({AI_SERVER_URL})</p>
-                <button
-                  onClick={() => {
-                    setCameraStatus('loading');
-                    setStreamKey(Date.now());
-                    setTimeout(() => {
-                      fetch(`${AI_SERVER_URL}/api/camera/status`)
-                        .then(res => setCameraStatus(res.ok ? 'online' : 'offline'))
-                        .catch(() => setCameraStatus('offline'));
-                    }, 500);
-                  }}
-                  className="mt-4 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm flex items-center gap-2"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  Thử kết nối lại
-                </button>
+      {/* Active View */}
+      {viewMode === 'active' && (
+        <>
+          {/* Video Stream Section */}
+          {showVideoStream && (
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Video className="w-5 h-5 text-blue-600" />
+                  <h3 className="font-semibold text-slate-800">Camera giám sát té ngã (AI)</h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`flex items-center gap-1 text-sm ${
+                    cameraStatus === 'online' ? 'text-emerald-600' : 
+                    cameraStatus === 'offline' ? 'text-red-600' : 'text-slate-400'
+                  }`}>
+                    <span className={`w-2 h-2 rounded-full ${
+                      cameraStatus === 'online' ? 'bg-emerald-500 animate-pulse' : 
+                      cameraStatus === 'offline' ? 'bg-red-500' : 'bg-slate-400'
+                    }`}></span>
+                    {cameraStatus === 'online' ? 'Đang hoạt động' : 
+                     cameraStatus === 'offline' ? 'Không kết nối' : 'Đang kiểm tra...'}
+                  </span>
+                </div>
               </div>
-            ) : (
-              <div className="flex items-center justify-center text-slate-400">
-                <div className="animate-spin rounded-full h-8 w-8 border-2 border-slate-400 border-t-white"></div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Alert Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl p-5 border border-slate-200 hover:border-slate-300 transition-colors">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-red-50 rounded-lg flex items-center justify-center">
-              <AlertCircle className="w-5 h-5 text-red-600" />
-            </div>
-            <div>
-              <p className="text-xl font-semibold text-slate-800">
-                {activeAlerts.filter((a) => a.status === 'Active').length}
-              </p>
-              <p className="text-sm text-slate-500">Chưa xử lý</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl p-5 border border-slate-200 hover:border-slate-300 transition-colors">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-amber-50 rounded-lg flex items-center justify-center">
-              <Clock className="w-5 h-5 text-amber-600" />
-            </div>
-            <div>
-              <p className="text-xl font-semibold text-slate-800">
-                {activeAlerts.filter((a) => a.status === 'Acknowledged').length}
-              </p>
-              <p className="text-sm text-slate-500">Đang xử lý</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl p-5 border border-slate-200 hover:border-slate-300 transition-colors">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-emerald-50 rounded-lg flex items-center justify-center">
-              <CheckCircle className="w-5 h-5 text-emerald-600" />
-            </div>
-            <div>
-              <p className="text-xl font-semibold text-slate-800">0</p>
-              <p className="text-sm text-slate-500">Đã xử lý hôm nay</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Alerts List */}
-      {loading ? (
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-6 w-6 border-2 border-slate-300 border-t-slate-600"></div>
-        </div>
-      ) : activeAlerts.length > 0 ? (
-        <div className="space-y-3">
-          {activeAlerts.map((alert) => (
-            <div
-              key={alert.id}
-              className={`bg-white rounded-xl border overflow-hidden transition-all ${
-                alert.status === 'Active'
-                  ? 'border-red-200 shadow-sm'
-                  : 'border-amber-200'
-              }`}
-            >
-              <div className="p-5">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-4">
-                    {/* Alert Icon */}
-                    <div
-                      className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                        alert.status === 'Active' ? 'bg-red-50' : 'bg-amber-50'
-                      }`}
+              <div className="aspect-video bg-slate-900 flex items-center justify-center relative">
+                {cameraStatus === 'online' ? (
+                  <img
+                    key={streamKey}
+                    src={`${AI_SERVER_URL}/api/stream?t=${streamKey}`}
+                    alt="Fall Detection Stream"
+                    className="w-full h-full object-contain"
+                    onLoad={() => setRetryCount(0)}
+                    onError={() => {
+                      console.error('Stream error, retry count:', retryCount);
+                      if (retryCount < 3) {
+                        setRetryCount(prev => prev + 1);
+                        setTimeout(() => setStreamKey(Date.now()), 2000);
+                      } else {
+                        setCameraStatus('offline');
+                        setRetryCount(0);
+                      }
+                    }}
+                  />
+                ) : cameraStatus === 'offline' ? (
+                  <div className="flex flex-col items-center justify-center text-slate-400 p-8">
+                    <Video className="w-12 h-12 mb-3 opacity-50" />
+                    <p className="text-sm font-medium">Không thể kết nối camera</p>
+                    <p className="text-xs mt-1">Kiểm tra AI Server ({AI_SERVER_URL})</p>
+                    <button
+                      onClick={() => {
+                        setCameraStatus('loading');
+                        setStreamKey(Date.now());
+                        setTimeout(() => {
+                          fetch(`${AI_SERVER_URL}/api/camera/status`)
+                            .then(res => setCameraStatus(res.ok ? 'online' : 'offline'))
+                            .catch(() => setCameraStatus('offline'));
+                        }, 500);
+                      }}
+                      className="mt-4 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm flex items-center gap-2"
                     >
-                      <AlertTriangle
-                        className={`w-5 h-5 ${
-                          alert.status === 'Active' ? 'text-red-600' : 'text-amber-600'
-                        }`}
-                      />
-                    </div>
+                      <RefreshCw className="w-4 h-4" />
+                      Thử kết nối lại
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center text-slate-400">
+                    <div className="animate-spin rounded-full h-8 w-8 border-2 border-slate-400 border-t-white"></div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
-                    {/* Alert Info */}
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <h3 className="text-base font-semibold text-slate-800">
-                          Phát hiện té ngã #{alert.id}
-                        </h3>
-                        <span
-                          className={`px-2 py-0.5 text-xs font-medium rounded-md ${getStatusColor(
-                            alert.status
-                          )}`}
+          {/* Active Alerts List */}
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="animate-spin rounded-full h-6 w-6 border-2 border-slate-300 border-t-slate-600"></div>
+            </div>
+          ) : activeAlerts.length > 0 ? (
+            <div className="space-y-3">
+              {activeAlerts.map((alert) => (
+                <div
+                  key={alert.id}
+                  className={`bg-white rounded-xl border overflow-hidden transition-all ${
+                    alert.status === 'Active'
+                      ? 'border-red-200 shadow-sm'
+                      : 'border-amber-200'
+                  }`}
+                >
+                  <div className="p-5">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start gap-4">
+                        <div
+                          className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                            alert.status === 'Active' ? 'bg-red-50' : 'bg-amber-50'
+                          }`}
                         >
-                          {getStatusText(alert.status)}
-                        </span>
-                      </div>
-
-                      <div className="flex flex-wrap gap-4 text-sm">
-                        <div className="flex items-center gap-1.5 text-slate-600">
-                          <User className="w-4 h-4 text-slate-400" />
-                          <span>{alert.patientName || 'Không xác định'}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-slate-600">
-                          <MapPin className="w-4 h-4 text-slate-400" />
-                          <span>{alert.location || 'Không rõ vị trí'}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-slate-600">
-                          <Clock className="w-4 h-4 text-slate-400" />
-                          <span>{formatTime(alert.timestamp)}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-slate-500">Độ tin cậy:</span>
-                          <span
-                            className={`font-medium ${
-                              alert.confidence >= 0.8
-                                ? 'text-red-600'
-                                : alert.confidence >= 0.6
-                                ? 'text-amber-600'
-                                : 'text-slate-600'
+                          <AlertTriangle
+                            className={`w-5 h-5 ${
+                              alert.status === 'Active' ? 'text-red-600' : 'text-amber-600'
                             }`}
-                          >
-                            {Math.round(alert.confidence * 100)}%
-                          </span>
+                          />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 mb-2">
+                            <h3 className="text-base font-semibold text-slate-800">
+                              Phát hiện té ngã #{alert.id}
+                            </h3>
+                            <span
+                              className={`px-2 py-0.5 text-xs font-medium rounded-md ${getStatusColor(
+                                alert.status
+                              )}`}
+                            >
+                              {getStatusText(alert.status)}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-4 text-sm">
+                            <div className="flex items-center gap-1.5 text-slate-600">
+                              <User className="w-4 h-4 text-slate-400" />
+                              <span>{alert.patientName || 'Không xác định'}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-slate-600">
+                              <MapPin className="w-4 h-4 text-slate-400" />
+                              <span>{alert.location || 'Không rõ vị trí'}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-slate-600">
+                              <Clock className="w-4 h-4 text-slate-400" />
+                              <span>{formatTime(alert.timestamp)}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-slate-500">Độ tin cậy:</span>
+                              <span
+                                className={`font-medium ${
+                                  alert.confidence >= 0.8
+                                    ? 'text-red-600'
+                                    : alert.confidence >= 0.6
+                                    ? 'text-amber-600'
+                                    : 'text-slate-600'
+                                }`}
+                              >
+                                {Math.round(alert.confidence * 100)}%
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       </div>
+                    </div>
+                    <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-100">
+                      {alert.hasImage && (
+                        <button
+                          onClick={() => setSelectedAlert(alert)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+                        >
+                          <Image className="w-4 h-4" />
+                          Xem ảnh
+                        </button>
+                      )}
+                      {alert.status === 'Active' && (
+                        <button
+                          onClick={() => handleAcknowledge(alert.id)}
+                          disabled={processingId === alert.id}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-amber-500 text-white rounded-md hover:bg-amber-600 transition-colors disabled:opacity-50"
+                        >
+                          <Clock className="w-4 h-4" />
+                          Xác nhận
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleResolve(alert.id)}
+                        disabled={processingId === alert.id}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-emerald-500 text-white rounded-md hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                        Đã xử lý
+                      </button>
+                      <button
+                        onClick={() => handleDismiss(alert.id)}
+                        disabled={processingId === alert.id}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-slate-500 text-white rounded-md hover:bg-slate-600 transition-colors disabled:opacity-50"
+                      >
+                        <XCircle className="w-4 h-4" />
+                        Cảnh báo sai
+                      </button>
                     </div>
                   </div>
                 </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-100">
-                  {alert.hasImage && (
-                    <button
-                      onClick={() => setSelectedAlert(alert)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
-                    >
-                      <Image className="w-4 h-4" />
-                      Xem ảnh
-                    </button>
-                  )}
-                  {alert.status === 'Active' && (
-                    <button
-                      onClick={() => handleAcknowledge(alert.id)}
-                      disabled={processingId === alert.id}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-amber-500 text-white rounded-md hover:bg-amber-600 transition-colors disabled:opacity-50"
-                    >
-                      <Clock className="w-4 h-4" />
-                      Xác nhận
-                    </button>
-                  )}
-                  <button
-                    onClick={() => handleResolve(alert.id)}
-                    disabled={processingId === alert.id}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-emerald-500 text-white rounded-md hover:bg-emerald-600 transition-colors disabled:opacity-50"
-                  >
-                    <CheckCircle className="w-4 h-4" />
-                    Đã xử lý
-                  </button>
-                  <button
-                    onClick={() => handleDismiss(alert.id)}
-                    disabled={processingId === alert.id}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-slate-500 text-white rounded-md hover:bg-slate-600 transition-colors disabled:opacity-50"
-                  >
-                    <XCircle className="w-4 h-4" />
-                    Cảnh báo sai
-                  </button>
-                </div>
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
-          <div className="w-14 h-14 bg-emerald-50 rounded-xl flex items-center justify-center mx-auto mb-4">
-            <CheckCircle className="w-7 h-7 text-emerald-600" />
+          ) : (
+            <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
+              <div className="w-14 h-14 bg-emerald-50 rounded-xl flex items-center justify-center mx-auto mb-4">
+                <CheckCircle className="w-7 h-7 text-emerald-600" />
+              </div>
+              <h3 className="text-base font-semibold text-slate-800 mb-1">Không có cảnh báo</h3>
+              <p className="text-sm text-slate-500">
+                Hệ thống đang hoạt động bình thường. Không phát hiện té ngã nào.
+              </p>
+            </div>
+          )}
+
+          {/* Test Alert Button */}
+          <div className="bg-slate-50 rounded-xl p-5 border border-dashed border-slate-300">
+            <h4 className="text-sm font-medium text-slate-700 mb-2">Kiểm tra hệ thống</h4>
+            <p className="text-sm text-slate-500 mb-3">
+              Tạo cảnh báo test để kiểm tra hệ thống hoạt động đúng.
+            </p>
+            <button
+              onClick={async () => {
+                try {
+                  await alertApi.createFallAlert({
+                    location: 'Phòng khám số 1',
+                    confidence: 0.85,
+                  });
+                  playAlertSound();
+                  fetchAlerts();
+                } catch (error) {
+                  console.error('Error creating test alert:', error);
+                }
+              }}
+              className="px-4 py-2 text-sm font-medium bg-slate-800 text-white rounded-lg hover:bg-slate-700 transition-colors"
+            >
+              Tạo cảnh báo test
+            </button>
           </div>
-          <h3 className="text-base font-semibold text-slate-800 mb-1">Không có cảnh báo</h3>
-          <p className="text-sm text-slate-500">
-            Hệ thống đang hoạt động bình thường. Không phát hiện té ngã nào.
-          </p>
-        </div>
+        </>
       )}
 
-      {/* Test Alert Button (for development) */}
-      <div className="bg-slate-50 rounded-xl p-5 border border-dashed border-slate-300">
-        <h4 className="text-sm font-medium text-slate-700 mb-2">Kiểm tra hệ thống</h4>
-        <p className="text-sm text-slate-500 mb-3">
-          Tạo cảnh báo test để kiểm tra hệ thống hoạt động đúng.
-        </p>
-        <button
-          onClick={async () => {
-            try {
-              await alertApi.createFallAlert({
-                location: 'Phòng khám số 1',
-                confidence: 0.85,
-              });
-              playAlertSound();
-              fetchAlerts();
-            } catch (error) {
-              console.error('Error creating test alert:', error);
-            }
-          }}
-          className="px-4 py-2 text-sm font-medium bg-slate-800 text-white rounded-lg hover:bg-slate-700 transition-colors"
-        >
-          Tạo cảnh báo test
-        </button>
-      </div>
+      {/* History View */}
+      {viewMode === 'history' && (
+        <>
+          {/* Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-white rounded-xl p-5 border border-slate-200 hover:border-slate-300 transition-colors">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5 text-slate-600" />
+                </div>
+                <p className="text-sm text-slate-500 font-medium">Tổng cảnh báo</p>
+              </div>
+              <p className="text-2xl font-semibold text-slate-800">{totalAlerts}</p>
+            </div>
+            <div className="bg-white rounded-xl p-5 border border-slate-200 hover:border-slate-300 transition-colors">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 bg-emerald-50 rounded-lg flex items-center justify-center">
+                  <CheckCircle className="w-5 h-5 text-emerald-600" />
+                </div>
+                <p className="text-sm text-slate-500 font-medium">Đã xử lý</p>
+              </div>
+              <p className="text-2xl font-semibold text-emerald-600">{resolvedAlerts}</p>
+            </div>
+            <div className="bg-white rounded-xl p-5 border border-slate-200 hover:border-slate-300 transition-colors">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center">
+                  <XCircle className="w-5 h-5 text-slate-500" />
+                </div>
+                <p className="text-sm text-slate-500 font-medium">Cảnh báo sai</p>
+              </div>
+              <p className="text-2xl font-semibold text-slate-600">{falsePositives}</p>
+            </div>
+            <div className="bg-white rounded-xl p-5 border border-slate-200 hover:border-slate-300 transition-colors">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
+                  <Clock className="w-5 h-5 text-blue-600" />
+                </div>
+                <p className="text-sm text-slate-500 font-medium">Độ tin cậy TB</p>
+              </div>
+              <p className="text-2xl font-semibold text-blue-600">{avgConfidence}%</p>
+            </div>
+          </div>
+
+          {/* Filters */}
+          <div className="bg-white rounded-xl p-5 border border-slate-200">
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4 text-slate-400" />
+                <span className="text-sm font-medium text-slate-600">Lọc theo:</span>
+              </div>
+
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-200 focus:border-slate-400 transition-colors"
+              >
+                <option value="all">Tất cả trạng thái</option>
+                <option value="Active">Đang hoạt động</option>
+                <option value="Acknowledged">Đã xác nhận</option>
+                <option value="Resolved">Đã xử lý</option>
+                <option value="FalsePositive">Cảnh báo sai</option>
+              </select>
+
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="date"
+                  value={dateFilter}
+                  onChange={(e) => setDateFilter(e.target.value)}
+                  className="pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-200 focus:border-slate-400 transition-colors"
+                />
+              </div>
+
+              {(statusFilter !== 'all' || dateFilter) && (
+                <button
+                  onClick={() => {
+                    setStatusFilter('all');
+                    setDateFilter('');
+                  }}
+                  className="px-3 py-2 text-sm text-slate-500 hover:text-slate-700 transition-colors"
+                >
+                  Xóa bộ lọc
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* History Table */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            {historyLoading ? (
+              <div className="flex items-center justify-center h-64">
+                <div className="animate-spin rounded-full h-6 w-6 border-2 border-slate-300 border-t-slate-600"></div>
+              </div>
+            ) : filteredAlerts.length > 0 ? (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                          ID
+                        </th>
+                        <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                          Thời gian
+                        </th>
+                        <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                          Vị trí
+                        </th>
+                        <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                          Độ tin cậy
+                        </th>
+                        <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                          Trạng thái
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredAlerts.map((alert) => (
+                        <tr key={alert.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-5 py-4">
+                            <span className="font-mono text-sm text-slate-600">#{alert.id}</span>
+                          </td>
+                          <td className="px-5 py-4">
+                            <div className="flex items-center gap-2 text-sm text-slate-700">
+                              <Clock className="w-4 h-4 text-slate-400" />
+                              {formatDateTime(alert.timestamp)}
+                            </div>
+                          </td>
+                          <td className="px-5 py-4">
+                            <div className="flex items-center gap-2 text-sm text-slate-700">
+                              <MapPin className="w-4 h-4 text-slate-400" />
+                              {alert.location || 'Không rõ'}
+                            </div>
+                          </td>
+                          <td className="px-5 py-4">
+                            <div className="flex items-center gap-2">
+                              <div className="w-14 bg-slate-200 rounded-full h-1.5">
+                                <div
+                                  className={`h-1.5 rounded-full ${
+                                    alert.confidence >= 0.8
+                                      ? 'bg-red-500'
+                                      : alert.confidence >= 0.6
+                                      ? 'bg-amber-500'
+                                      : 'bg-emerald-500'
+                                  }`}
+                                  style={{ width: `${alert.confidence * 100}%` }}
+                                />
+                              </div>
+                              <span className="text-sm text-slate-600">
+                                {Math.round(alert.confidence * 100)}%
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-5 py-4">
+                            <span
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md ${getStatusColor(
+                                alert.status
+                              )}`}
+                            >
+                              {getStatusIcon(alert.status)}
+                              {getStatusText(alert.status)}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination */}
+                <div className="flex items-center justify-between px-5 py-3.5 border-t border-slate-200 bg-slate-50">
+                  <p className="text-sm text-slate-500">
+                    Hiển thị {filteredAlerts.length} cảnh báo
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                      className="p-1.5 border border-slate-200 rounded-md hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ChevronLeft className="w-4 h-4 text-slate-600" />
+                    </button>
+                    <span className="px-3 py-1.5 bg-slate-800 text-white rounded-md text-sm font-medium">
+                      {page}
+                    </span>
+                    <button
+                      onClick={() => setPage((p) => p + 1)}
+                      disabled={historyAlerts.length < pageSize}
+                      className="p-1.5 border border-slate-200 rounded-md hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ChevronRight className="w-4 h-4 text-slate-600" />
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-12">
+                <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+                  <AlertTriangle className="w-6 h-6 text-slate-400" />
+                </div>
+                <h3 className="text-base font-medium text-slate-800 mb-1">Không có cảnh báo</h3>
+                <p className="text-sm text-slate-500">Chưa có cảnh báo nào phù hợp với bộ lọc</p>
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {/* Image Modal */}
       {selectedAlert && (

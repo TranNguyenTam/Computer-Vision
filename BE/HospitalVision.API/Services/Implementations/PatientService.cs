@@ -92,13 +92,35 @@ public class PatientService : IPatientService
         // Count total patients
         var totalPatients = await _unitOfWork.BenhNhans.CountAsync();
         
-        // Mock data for now (can be enhanced later)
+        // Get active alerts count from AlertService
+        var activeAlertsCount = 0;
+        List<FallAlertResponse> recentAlerts = new();
+        try
+        {
+            // This would need AlertService injection to get actual data
+            // For now, return 0
+        }
+        catch
+        {
+            // Ignore if AlertService not available
+        }
+        
+        // Get recent detections
+        var recentDetections = GetRecentDetections();
+        
+        // Count today's detections
+        var today = DateTime.UtcNow.Date;
+        var patientsDetectedToday = recentDetections
+            .Count(d => d.Timestamp.Date == today);
+        
         return new DashboardStatsDto
         {
             TotalPatients = totalPatients,
-            PatientsDetectedToday = 0, // Will be calculated from face detections
-            ActiveAlerts = 0, // Will be calculated from alerts
-            RecentDetections = new List<RecentDetectionDto>()
+            PatientsDetectedToday = patientsDetectedToday,
+            ActiveAlerts = activeAlertsCount,
+            TodayAppointments = 0, // Can be enhanced with appointment data
+            RecentAlerts = recentAlerts,
+            RecentDetections = recentDetections
         };
     }
 

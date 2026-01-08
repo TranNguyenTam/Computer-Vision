@@ -1,6 +1,8 @@
+using HospitalVision.API.Hubs;
 using HospitalVision.API.Models.DTOs;
 using HospitalVision.API.Services.Interfaces;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 
 namespace HospitalVision.API.Controllers;
 
@@ -11,15 +13,18 @@ public class FaceController : ControllerBase
     private readonly IFaceService _faceService;
     private readonly IPatientService _patientService;
     private readonly ILogger<FaceController> _logger;
+    private readonly IHubContext<AlertHub> _hubContext;
 
     public FaceController(
         IFaceService faceService,
         IPatientService patientService,
-        ILogger<FaceController> logger)
+        ILogger<FaceController> logger,
+        IHubContext<AlertHub> hubContext)
     {
         _faceService = faceService;
         _patientService = patientService;
         _logger = logger;
+        _hubContext = hubContext;
     }
 
     /// Kiểm tra mã y tế có tồn tại không
@@ -236,6 +241,19 @@ public class FaceController : ControllerBase
         {
             var result = await _faceService.RecordDetectionAsync(request);
             var resultDict = (dynamic)result;
+            
+            // Send SignalR event to all connected clients
+            await _hubContext.Clients.All.SendAsync("PatientDetected", new
+            {
+                PatientId = request.MaYTe,
+                PatientName = request.PatientName ?? resultDict.PatientName,
+                Timestamp = DateTime.UtcNow,
+                Location = request.Location ?? "Cổng chính",
+                Confidence = request.Confidence
+            });
+            
+            _logger.LogInformation("Face detection SignalR event sent: {MaYTe} - {PatientName}", 
+                request.MaYTe, request.PatientName ?? resultDict.PatientName);
             
             return Ok(new 
             { 

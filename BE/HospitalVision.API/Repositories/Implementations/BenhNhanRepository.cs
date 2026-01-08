@@ -17,7 +17,7 @@ public class BenhNhanRepository : Repository<BenhNhan>, IBenhNhanRepository
     public async Task<BenhNhan?> GetByMaYTeAsync(string maYTe)
     {
         return await _hospitalContext.BenhNhans
-            .FirstOrDefaultAsync(b => b.MaYTe == maYTe);
+        .FirstOrDefaultAsync(b => b.MaYTe == maYTe);
     }
 
     public async Task<List<BenhNhan>> SearchByNameOrMaYTeAsync(string searchTerm)

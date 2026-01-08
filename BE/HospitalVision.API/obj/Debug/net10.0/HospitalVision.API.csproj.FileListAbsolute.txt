@@ -171,3 +171,5 @@ D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\refint\Hospita
 D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\HospitalVision.API.pdb
 D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\HospitalVision.API.genruntimeconfig.cache
 D:\Intern\Computer Vision\BE\HospitalVision.API\obj\Debug\net10.0\ref\HospitalVision.API.dll
+D:\Intern\Computer Vision\BE\HospitalVision.API\bin\Debug\net10.0\Swashbuckle.AspNetCore.Swagger.dll
+D:\Intern\Computer Vision\BE\HospitalVision.API\bin\Debug\net10.0\Swashbuckle.AspNetCore.SwaggerGen.dll

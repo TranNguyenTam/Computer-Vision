@@ -91,6 +91,11 @@ class SignalRService {
     };
   }
 
+  // Alias for face recognition events
+  onFaceRecognition(handler: PatientDetectedHandler): () => void {
+    return this.onPatientDetected(handler);
+  }
+
   onAlertStatusUpdate(handler: AlertStatusUpdateHandler): () => void {
     this.alertStatusUpdateHandlers.push(handler);
     return () => {

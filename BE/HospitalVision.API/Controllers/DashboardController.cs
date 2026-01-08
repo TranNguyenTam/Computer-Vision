@@ -22,6 +22,18 @@ public class DashboardController : ControllerBase
     public async Task<ActionResult<DashboardStatsDto>> GetStats()
     {
         var stats = await _patientService.GetDashboardStatsAsync();
+        
+        // Get active alerts count
+        var activeAlerts = await _alertService.GetActiveAlertsAsync();
+        stats.ActiveAlerts = activeAlerts.Count;
+        
+        // Get recent alerts (last 5)
+        var recentAlerts = activeAlerts
+            .OrderByDescending(a => a.Timestamp)
+            .Take(5)
+            .ToList();
+        stats.RecentAlerts = recentAlerts;
+        
         return Ok(stats);
     }
 
