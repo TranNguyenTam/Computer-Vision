@@ -92,6 +92,8 @@ export interface DashboardStats {
   todayAppointments: number;
   activeAlerts: number;
   patientsDetectedToday: number;
+  todayAlerts?: number;
+  avgConfidence?: number;
   recentAlerts: RecentAlert[];
   recentDetections: RecentDetection[];
 }
