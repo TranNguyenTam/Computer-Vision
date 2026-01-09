@@ -242,25 +242,30 @@ public class FaceController : ControllerBase
             var result = await _faceService.RecordDetectionAsync(request);
             var resultDict = (dynamic)result;
             
+            // Extract values from dynamic result
+            string? patientNameResult = resultDict.PatientName;
+            bool alreadyRecorded = resultDict.AlreadyRecorded;
+            string patientNameFinal = request.PatientName ?? patientNameResult;
+            
             // Send SignalR event to all connected clients
             await _hubContext.Clients.All.SendAsync("PatientDetected", new
             {
                 PatientId = request.MaYTe,
-                PatientName = request.PatientName ?? resultDict.PatientName,
+                PatientName = patientNameFinal,
                 Timestamp = DateTime.UtcNow,
                 Location = request.Location ?? "Cổng chính",
                 Confidence = request.Confidence
             });
             
             _logger.LogInformation("Face detection SignalR event sent: {MaYTe} - {PatientName}", 
-                request.MaYTe, request.PatientName ?? resultDict.PatientName);
+                request.MaYTe, patientNameFinal);
             
             return Ok(new 
             { 
                 success = true, 
                 message = "Detection recorded successfully",
-                patientName = resultDict.PatientName,
-                alreadyRecorded = resultDict.AlreadyRecorded
+                patientName = patientNameResult,
+                alreadyRecorded = alreadyRecorded
             });
         }
         catch (Exception ex)

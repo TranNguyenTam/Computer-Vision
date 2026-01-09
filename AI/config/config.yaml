@@ -35,7 +35,7 @@ camera:
 
   # RTSP Transport
   # tcp = ổn định hơn, udp = latency thấp hơn
-  transport: "udp" # UDP for lower latency
+  transport: "tcp" # TCP for reliable streaming
 
   # Hardware acceleration (GTX 1650 4GB)
   use_hw_accel: true # ENABLED for NVIDIA GPU
