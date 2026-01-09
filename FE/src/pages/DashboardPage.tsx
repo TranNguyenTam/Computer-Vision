@@ -1,12 +1,12 @@
 import {
-    Activity,
-    AlertTriangle,
-    Bell,
-    Clock,
-    MapPin,
-    TrendingUp,
-    UserCheck,
-    Users
+  Activity,
+  AlertTriangle,
+  Bell,
+  Clock,
+  MapPin,
+  TrendingUp,
+  UserCheck,
+  Users
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { alertApi, dashboardApi } from '../services/api';

@@ -52,9 +52,9 @@ export const NotificationToast: React.FC<NotificationToastProps> = ({
                 Bệnh nhân: {alert.patientName}
               </p>
             )}
-            <p className="text-red-200 text-xs mt-1">
+            {/* <p className="text-red-200 text-xs mt-1">
               Độ tin cậy: {Math.round(alert.confidence * 100)}%
-            </p>
+            </p> */}
             <p className="text-red-200 text-xs">
               {new Date(alert.timestamp).toLocaleString('vi-VN')}
             </p>

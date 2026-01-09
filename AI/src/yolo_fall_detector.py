@@ -138,6 +138,12 @@ class YOLOFallDetector:
         self.last_fall_time: float = 0
         self.fall_confirmed = False
         
+        # LYING detection tracking
+        self.lying_start_time: Optional[float] = None
+        self.last_lying_alert_time: float = 0
+        self.lying_alert_threshold = config.get('lying_alert_threshold', 3.0)  # Alert after 3s of lying
+        self.lying_cooldown = config.get('lying_cooldown', 10.0)  # Cooldown between lying alerts
+        
         # Missing detection tracking
         self.missing_frames = 0
         self.max_missing_frames = config.get('max_missing_frames', 10)  # Số frame cho phép mất detection
@@ -198,6 +204,110 @@ class YOLOFallDetector:
         except (IndexError, TypeError):
             pass
         return None
+
+    def _get_body_bbox_ratio(self, keypoints: np.ndarray, conf: np.ndarray, min_conf: float = 0.3) -> Optional[float]:
+        """Calculate width/height ratio of body bounding box
+        
+        Returns:
+            ratio > 1.0: Body is more horizontal (lying)
+            ratio < 1.0: Body is more vertical (standing/sitting)
+        """
+        try:
+            # Collect all visible keypoints
+            visible_points = []
+            for i, (kpt, c) in enumerate(zip(keypoints, conf)):
+                if c > min_conf:
+                    visible_points.append(kpt)
+            
+            if len(visible_points) < 4:
+                return None
+            
+            points = np.array(visible_points)
+            x_min, y_min = points.min(axis=0)
+            x_max, y_max = points.max(axis=0)
+            
+            width = x_max - x_min
+            height = y_max - y_min
+            
+            if height < 10:  # Avoid division by near-zero
+                return None
+            
+            return width / height
+        except (IndexError, TypeError):
+            return None
+
+    def _get_head_hip_vertical_diff(self, keypoints: np.ndarray, conf: np.ndarray) -> Optional[float]:
+        """Calculate vertical distance between head and hip (normalized)
+        
+        Returns:
+            Large positive: Head is above hip (standing/sitting)
+            Small/negative: Head is near or below hip level (lying)
+        """
+        try:
+            # Get head position (nose or average of eyes)
+            head_y = None
+            if conf[self.NOSE] > 0.5:
+                head_y = keypoints[self.NOSE][1]
+            elif conf[self.LEFT_EYE] > 0.5 and conf[self.RIGHT_EYE] > 0.5:
+                head_y = (keypoints[self.LEFT_EYE][1] + keypoints[self.RIGHT_EYE][1]) / 2
+            
+            # Get hip position
+            hip_y = None
+            if conf[self.LEFT_HIP] > 0.5 and conf[self.RIGHT_HIP] > 0.5:
+                hip_y = (keypoints[self.LEFT_HIP][1] + keypoints[self.RIGHT_HIP][1]) / 2
+            
+            if head_y is None or hip_y is None:
+                return None
+            
+            # Positive = head above hip (normal), Negative = head below hip
+            return hip_y - head_y
+        except (IndexError, TypeError):
+            return None
+
+    def _get_leg_angle(self, keypoints: np.ndarray, conf: np.ndarray) -> Optional[float]:
+        """Calculate average leg angle from vertical
+        
+        Returns angle in degrees:
+            0-30: Legs straight down (standing)
+            30-60: Legs bent (sitting)
+            60-90: Legs horizontal (lying)
+        """
+        try:
+            angles = []
+            
+            # Left leg: hip -> ankle
+            if conf[self.LEFT_HIP] > 0.4 and conf[self.LEFT_ANKLE] > 0.4:
+                hip = keypoints[self.LEFT_HIP]
+                ankle = keypoints[self.LEFT_ANKLE]
+                leg_vector = ankle - hip
+                vertical = np.array([0, 1])  # Pointing down
+                
+                mag = np.linalg.norm(leg_vector)
+                if mag > 10:
+                    dot = np.dot(leg_vector, vertical)
+                    cos_angle = np.clip(dot / mag, -1, 1)
+                    angle = np.degrees(np.arccos(cos_angle))
+                    angles.append(angle)
+            
+            # Right leg: hip -> ankle
+            if conf[self.RIGHT_HIP] > 0.4 and conf[self.RIGHT_ANKLE] > 0.4:
+                hip = keypoints[self.RIGHT_HIP]
+                ankle = keypoints[self.RIGHT_ANKLE]
+                leg_vector = ankle - hip
+                vertical = np.array([0, 1])
+                
+                mag = np.linalg.norm(leg_vector)
+                if mag > 10:
+                    dot = np.dot(leg_vector, vertical)
+                    cos_angle = np.clip(dot / mag, -1, 1)
+                    angle = np.degrees(np.arccos(cos_angle))
+                    angles.append(angle)
+            
+            if angles:
+                return np.mean(angles)
+            return None
+        except (IndexError, TypeError):
+            return None
     
     def _get_body_angle(self, keypoints: np.ndarray, conf: np.ndarray) -> Optional[float]:
         """
@@ -488,14 +598,16 @@ class YOLOFallDetector:
     
     def _determine_pose_state(self, angle: Optional[float], vertical_speed: float, 
                               acceleration: float, stability: float,
+                              keypoints: Optional[np.ndarray] = None, conf: Optional[np.ndarray] = None,
                               center_y: Optional[float] = None, frame_height: Optional[int] = None) -> PoseState:
         """Determine current pose state using advanced multi-factor analysis
         
         Key improvements:
         - Uses fall confidence score instead of simple thresholds
-        - Considers acceleration (sudden movements)
-        - Considers stability (balance)
-        - Better separation of cúi người vs té ngã
+        - Considers body bbox ratio (width/height)
+        - Considers head-hip vertical difference
+        - Considers leg angle
+        - Better separation of sitting vs lying
         """
         if angle is None:
             return PoseState.UNKNOWN
@@ -505,33 +617,105 @@ class YOLOFallDetector:
         if center_y is not None and frame_height is not None and frame_height > 0:
             normalized_y = center_y / frame_height
         
+        # Get additional metrics for better state detection
+        bbox_ratio = None
+        head_hip_diff = None
+        leg_angle = None
+        
+        if keypoints is not None and conf is not None:
+            bbox_ratio = self._get_body_bbox_ratio(keypoints, conf)
+            head_hip_diff = self._get_head_hip_vertical_diff(keypoints, conf)
+            leg_angle = self._get_leg_angle(keypoints, conf)
+        
         # Calculate fall confidence score (0-1)
         fall_confidence = self._calculate_fall_confidence(
             angle, vertical_speed, acceleration, stability, normalized_y
         )
         
-        # IMPROVED LOGIC: Use confidence threshold
-        # Confidence > 0.6 = High probability of falling
-        # Confidence > 0.8 = Very high probability
-        
+        # FALLING detection: high confidence + movement indicators
         if fall_confidence > 0.6:
-            # Additional check: must be actually moving down OR very unstable
             if vertical_speed > self.vertical_speed_threshold * 0.3 or stability < 0.3:
                 return PoseState.FALLING
         
-        # Check for lying position - require low position in frame
-        if angle > 70:
-            # IMPORTANT: Distinguish bending vs lying on ground
-            if normalized_y is not None:
-                if normalized_y > 0.7:  # Near ground
-                    return PoseState.LYING
-                elif normalized_y > 0.5:  # Mid position
-                    return PoseState.SITTING
-                else:  # Still high - just bending
-                    return PoseState.SITTING
-            return PoseState.LYING  # Fallback
+        # ============== IMPROVED STATE DETECTION ==============
+        # Use multiple factors for better accuracy
         
-        elif angle > 40:
+        lying_score = 0
+        sitting_score = 0
+        standing_score = 0
+        
+        # Factor 1: Body angle (primary indicator)
+        if angle > 70:
+            lying_score += 3
+        elif angle > 50:
+            lying_score += 1
+            sitting_score += 2
+        elif angle > 30:
+            sitting_score += 3
+        else:
+            standing_score += 3
+        
+        # Factor 2: Bbox ratio (width/height)
+        # Lying: ratio > 1.2 (horizontal body)
+        # Standing: ratio < 0.6 (vertical body)
+        if bbox_ratio is not None:
+            if bbox_ratio > 1.5:
+                lying_score += 3
+            elif bbox_ratio > 1.0:
+                lying_score += 2
+                sitting_score += 1
+            elif bbox_ratio > 0.7:
+                sitting_score += 2
+            else:
+                standing_score += 2
+        
+        # Factor 3: Head-hip vertical difference
+        # Large positive = head well above hip (standing/sitting)
+        # Small/negative = head near hip level (lying)
+        if head_hip_diff is not None:
+            if head_hip_diff < 20:  # Head near hip level
+                lying_score += 3
+            elif head_hip_diff < 50:
+                lying_score += 1
+                sitting_score += 1
+            elif head_hip_diff < 100:
+                sitting_score += 2
+            else:
+                standing_score += 2
+        
+        # Factor 4: Leg angle
+        # Standing: legs mostly vertical (0-30°)
+        # Sitting: legs bent or forward (30-70°)
+        # Lying: legs horizontal (60-90°)
+        if leg_angle is not None:
+            if leg_angle > 70:
+                lying_score += 2
+            elif leg_angle > 45:
+                sitting_score += 2
+                lying_score += 1
+            elif leg_angle > 25:
+                sitting_score += 2
+            else:
+                standing_score += 2
+        
+        # Factor 5: Vertical position in frame
+        if normalized_y is not None:
+            if normalized_y > 0.75:  # Very low in frame
+                lying_score += 2
+            elif normalized_y > 0.6:
+                sitting_score += 1
+                lying_score += 1
+        
+        # Determine final state based on scores
+        max_score = max(lying_score, sitting_score, standing_score)
+        
+        # Log for debugging
+        logger.debug(f"State scores - Standing:{standing_score}, Sitting:{sitting_score}, Lying:{lying_score} | "
+                    f"angle={angle:.1f}, bbox_ratio={bbox_ratio}, head_hip={head_hip_diff}, leg={leg_angle}")
+        
+        if max_score == lying_score and lying_score > sitting_score:
+            return PoseState.LYING
+        elif max_score == sitting_score and sitting_score > standing_score:
             return PoseState.SITTING
         else:
             return PoseState.STANDING
@@ -643,8 +827,11 @@ class YOLOFallDetector:
         
         # Determine pose state with new advanced metrics
         center_y = center[1] if center is not None else None
-        new_state = self._determine_pose_state(angle, vertical_speed, acceleration, 
-                                               stability, center_y, frame_height)
+        new_state = self._determine_pose_state(
+            angle, vertical_speed, acceleration, stability,
+            keypoints=keypoints, conf=confidence,
+            center_y=center_y, frame_height=frame_height
+        )
         previous_state = self.current_state
         
         # Track frames in falling state for momentum tracking
@@ -726,6 +913,44 @@ class YOLOFallDetector:
                 self.fall_start_time = None
                 self.fall_confirmed = False
         
+        # ============== LYING DETECTION (Alert when lying for too long) ==============
+        lying_detected = False
+        lying_event = None
+        
+        if new_state == PoseState.LYING:
+            # Start tracking lying duration
+            if self.lying_start_time is None:
+                self.lying_start_time = current_time
+                logger.info(f"🛏️ Started tracking LYING state")
+            
+            lying_duration = current_time - self.lying_start_time
+            
+            # Alert if lying for too long (configurable threshold)
+            if lying_duration >= self.lying_alert_threshold:
+                if current_time - self.last_lying_alert_time >= self.lying_cooldown:
+                    lying_detected = True
+                    self.last_lying_alert_time = current_time
+                    
+                    location = (int(center[0]), int(center[1])) if center else (0, 0)
+                    _, buffer = cv2.imencode('.jpg', frame)
+                    frame_data = buffer.tobytes()
+                    
+                    lying_event = FallEvent(
+                        timestamp=current_time,
+                        confidence=0.85,
+                        location=location,
+                        previous_state=previous_state,
+                        duration=lying_duration,
+                        frame_data=frame_data
+                    )
+                    
+                    logger.warning(f"⚠️ LYING ALERT! Person lying for {lying_duration:.1f}s")
+        else:
+            # Reset lying tracking when not lying
+            if self.lying_start_time is not None:
+                logger.info(f"🛏️ Stopped tracking LYING state (now {new_state.value})")
+            self.lying_start_time = None
+        
         # CRITICAL: CHECK MOTION-BASED FALL (ngay cả khi có bounding box)
         if not fall_detected and self.use_motion_fallback and motion_magnitude > 0:
             motion_fall_detected = self._analyze_motion_pattern(motion_magnitude, current_time)
@@ -801,9 +1026,11 @@ class YOLOFallDetector:
         result_dict = {
             'fall_detected': fall_detected,
             'fall_event': fall_event,
+            'lying_detected': lying_detected,
+            'lying_event': lying_event,
             'annotated_frame': annotated_frame,
             'state': new_state,
-            'confidence': 0.95 if fall_detected else 0.0,
+            'confidence': 0.95 if fall_detected else (0.85 if lying_detected else 0.0),
             'angle': angle,
             'speed': vertical_speed,
             'acceleration': acceleration,  # NEW

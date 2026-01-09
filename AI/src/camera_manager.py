@@ -34,7 +34,7 @@ class CameraConfig:
     buffer_size: int = 0        # Zero buffer for real-time
     connection_timeout: int = 10
     read_timeout: int = 5
-    transport: str = "udp"      # UDP for lower latency
+    transport: str = "tcp"      # TCP for reliable streaming
     use_hw_accel: bool = False  # Hardware acceleration
     hw_decoder: str = "cuda"    # cuda, dxva2, d3d11va
 

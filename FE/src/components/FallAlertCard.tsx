@@ -1,11 +1,11 @@
 import { format } from 'date-fns';
 import {
-    AlertTriangle,
-    Check,
-    Clock,
-    MapPin,
-    User,
-    X
+  AlertTriangle,
+  Check,
+  Clock,
+  MapPin,
+  User,
+  X
 } from 'lucide-react';
 import React from 'react';
 import { FallAlert } from '../types';
@@ -85,7 +85,7 @@ const FallAlertCard: React.FC<FallAlertCardProps> = ({
         </div>
         
         <div className="text-gray-600">
-          <strong>Độ tin cậy:</strong> {(alert.confidence * 100).toFixed(1)}%
+          {/* <strong>Độ tin cậy:</strong> {(alert.confidence * 100).toFixed(1)}% */}
         </div>
       </div>
 

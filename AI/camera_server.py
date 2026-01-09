@@ -243,6 +243,46 @@ def process_frames():
                                 logger.warning(f"⚠️ Backend returned {response.status_code}: {response.text}")
                         except Exception as e:
                             logger.error(f"❌ Failed to send fall alert to backend: {e}")
+                    
+                    # LYING Alert - người nằm quá lâu
+                    if result.get('lying_detected'):
+                        # Emit lying event via WebSocket
+                        socketio.emit('lying_detected', {
+                            'timestamp': time.time(),
+                            'confidence': result.get('confidence', 0.85),
+                            'state': 'lying'
+                        })
+                        
+                        # Send lying alert to Backend API
+                        try:
+                            import requests
+                            lying_event = result.get('lying_event')
+                            frame_data = None
+                            if lying_event and lying_event.frame_data:
+                                frame_data = base64.b64encode(lying_event.frame_data).decode('utf-8')
+                            
+                            backend_url = load_config().get('backend', {}).get('url', 'http://localhost:5000')
+                            alert_data = {
+                                'patientId': None,
+                                'location': load_config().get('camera', {}).get('location', 'Camera 1'),
+                                'confidence': result.get('confidence', 0.85),
+                                'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                                'frameData': frame_data,
+                                'alertType': 'lying'  # Distinguish from fall
+                            }
+                            
+                            response = requests.post(
+                                f"{backend_url}/api/fall-alert",
+                                json=alert_data,
+                                timeout=5
+                            )
+                            
+                            if response.status_code in [200, 201]:
+                                logger.info(f"✅ Lying alert sent to backend: {response.json()}")
+                            else:
+                                logger.warning(f"⚠️ Backend returned {response.status_code}: {response.text}")
+                        except Exception as e:
+                            logger.error(f"❌ Failed to send lying alert to backend: {e}")
                 
                 # Face Recognition
                 if ai_settings["face_recognition_enabled"] and face_recognizer:
