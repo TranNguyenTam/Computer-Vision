@@ -19,7 +19,7 @@ from flask_socketio import SocketIO, emit
 from werkzeug.utils import secure_filename
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent))
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -74,24 +74,19 @@ def initialize_camera():
     """Initialize camera and AI modules"""
     global camera, fall_detector, face_recognizer
     
-    from camera_manager import HikvisionCamera, load_camera_configs
-    from yolo_fall_detector import YOLOFallDetector
+    from src.core import HikvisionCamera, MultiCameraManager
+    from src.core.camera_manager import load_camera_configs
+    from src.core import YOLOFallDetector
     
-    # Import face recognition from AI root folder
-    import sys
-    ai_root = str(Path(__file__).parent)
-    if ai_root not in sys.path:
-        sys.path.insert(0, ai_root)
-    
-    # Use deep learning face embedding (MobileFaceNet ONNX)
+    # Import face recognition
     try:
-        from face_embedding import FaceEmbedding
+        from src.services import FaceEmbedding
         USE_EMBEDDING = True
         logger.info("🧠 Using Deep Learning Face Embedding (MobileFaceNet ONNX)")
     except ImportError as e:
         logger.error(f"❌ Failed to import FaceEmbedding: {e}")
         # Fallback to fast CPU version
-        from face_recognition_fast import FastFaceRecognition
+        from src.services import FastFaceRecognition
         USE_EMBEDDING = False
         logger.info("💻 Fallback to Fast Face Recognition (CPU)")
     

@@ -92,12 +92,13 @@ def main():
     config = load_config()
     
     # Import modules
-    from camera_manager import HikvisionCamera, load_camera_configs
-    from yolo_fall_detector import YOLOFallDetector, PoseState
+    from src.core import HikvisionCamera, MultiCameraManager
+    from src.core.yolo_fall_detector import YOLOFallDetector, PoseState
+    from src.core.camera_manager import load_camera_configs
     
     # Tạo thư mục lưu ảnh té ngã
-    fall_images_dir = Path("fall_images")
-    fall_images_dir.mkdir(exist_ok=True)
+    fall_images_dir = Path("outputs/fall_detections")
+    fall_images_dir.mkdir(parents=True, exist_ok=True)
     print(f"📁 Ảnh té ngã sẽ được lưu tại: {fall_images_dir.absolute()}")
     
     # Initialize camera
@@ -113,7 +114,9 @@ def main():
     # Initialize fall detection
     print("🤖 Initializing YOLOv8-Pose Fall Detection...")
     fall_config = config.get('fall_detection', {})
-    fall_config['model_path'] = 'yolov8n-pose.pt'
+    # Update model path to new location
+    model_name = Path(fall_config.get('model_path', 'yolov8n-pose.pt')).name
+    fall_config['model_path'] = f'models/{model_name}'
     fall_detector = YOLOFallDetector(fall_config)
     
     # Connect to camera

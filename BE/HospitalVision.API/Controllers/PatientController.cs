@@ -89,4 +89,18 @@ public class PatientController : ControllerBase
 
         return Ok(new { message = "Detection logged successfully" });
     }
+
+    [HttpGet("by-face-id/{faceId}")]
+    public async Task<ActionResult<BenhNhan>> GetPatientByFaceId(string faceId)
+    {
+        var patient = await _patientService.GetBenhNhanByFaceIdAsync(faceId);
+        
+        if (patient == null)
+        {
+            _logger.LogWarning("Patient not found for Face ID: {FaceId}", faceId);
+            return NotFound(new { message = $"Patient with Face ID '{faceId}' not found" });
+        }
+
+        return Ok(patient);
+    }
 }

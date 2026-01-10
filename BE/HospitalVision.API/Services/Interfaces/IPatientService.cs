@@ -8,6 +8,7 @@ public interface IPatientService
     Task<PatientInfoDto?> GetPatientInfoAsync(string patientId);
     Task<BenhNhan?> GetBenhNhanAsync(int benhNhanId);
     Task<BenhNhan?> GetBenhNhanByMaYTeAsync(string maYTe);
+    Task<BenhNhan?> GetBenhNhanByFaceIdAsync(string faceId);
     Task<List<BenhNhan>> GetAllBenhNhansAsync();
     Task<List<BenhNhan>> SearchBenhNhansAsync(string searchTerm);
     Task<DashboardStatsDto> GetDashboardStatsAsync();

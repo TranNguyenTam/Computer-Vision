@@ -76,6 +76,13 @@ public class PatientService : IPatientService
         return await _unitOfWork.BenhNhans.GetByMaYTeAsync(maYTe);
     }
 
+    public async Task<BenhNhan?> GetBenhNhanByFaceIdAsync(string faceId)
+    {
+        // For now, assume faceId maps directly to MaYTe
+        // In production, you'd have a FaceMapping table
+        return await _unitOfWork.BenhNhans.GetByMaYTeAsync(faceId);
+    }
+
     public async Task<List<BenhNhan>> GetAllBenhNhansAsync()
     {
         var all = await _unitOfWork.BenhNhans.GetAllAsync();
