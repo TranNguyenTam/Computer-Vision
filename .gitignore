@@ -14,6 +14,15 @@ node_modules/
 package-lock.json
 /FE/package-lock.json
 
+# ==========================================
+# .NET / BACKEND - SENSITIVE FILES
+# ==========================================
+appsettings.json
+appsettings.Development.json
+!appsettings.example.json
+*.user
+*.suo
+
 # Build output
 /FE/dist/
 /FE/.vite/
